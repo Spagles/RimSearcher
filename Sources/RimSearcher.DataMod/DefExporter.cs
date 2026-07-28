@@ -85,7 +85,6 @@ public static class DefExporter
         Log($"发现 {defTypes.Count} 个 Def 类型");
 
         // Pre-count total defs for accurate progress
-        int totalTypeCount = defTypes.Count;
         int estimatedTotal = 0;
         foreach (var dt in defTypes)
         {
@@ -193,7 +192,7 @@ public static class DefExporter
 
                     if (fieldValueInserts.Count >= BatchSize)
                     {
-                        FlushFieldValues(conn, tx, fieldValueInserts);
+                        FlushFieldValues(conn, fieldValueInserts);
                     }
 
                     if (totalDefs % 500 == 0)
@@ -206,7 +205,7 @@ public static class DefExporter
             }
         }
 
-        FlushFieldValues(conn, tx, fieldValueInserts);
+        FlushFieldValues(conn, fieldValueInserts);
 
         tx.Commit();
         Log($"已写入 {totalDefs} 个 Def");
@@ -256,9 +255,8 @@ public static class DefExporter
         cmd.ExecuteNonQuery();
     }
 
-    private static void FlushFieldValues(SQLiteConnection conn, SQLiteTransaction tx, List<(int, string, string)> inserts)
+    private static void FlushFieldValues(SQLiteConnection conn, List<(int, string, string)> inserts)
     {
-        if (inserts.Count == 0) return;
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT INTO field_values (def_id, field_path, field_value) VALUES (@did, @fp, @fv)";
@@ -278,7 +276,6 @@ public static class DefExporter
     }
 
     private static string BuildSearchText(string? defName, string? label, string? description, List<string> fieldTexts)
-
     {
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(defName)) sb.Append(defName).Append(' ');
