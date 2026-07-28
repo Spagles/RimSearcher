@@ -5,7 +5,7 @@ using ConsoleAppFramework;
 using Microsoft.Data.Sqlite;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-string DbPath = Path.Combine(AppContext.BaseDirectory, "defs.db");
+string DbPath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "defs.db");
 var jsonOpts = new JsonSerializerOptions
 {
     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,

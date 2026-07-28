@@ -9,7 +9,8 @@
         <AssemblyName>rimsearcher</AssemblyName>
         <Nullable>enable</Nullable>
         <PublishSingleFile>true</PublishSingleFile>
-        <SelfContained>true</SelfContained>
+        <SelfContained>false</SelfContained>
+        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     </PropertyGroup>
 
