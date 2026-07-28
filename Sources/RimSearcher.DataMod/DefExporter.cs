@@ -67,7 +67,14 @@ public static class DefExporter
 
         using (var pragmaCmd = conn.CreateCommand())
         {
-            pragmaCmd.CommandText = "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;";
+            pragmaCmd.CommandText = @"
+                PRAGMA journal_mode=OFF;
+                PRAGMA synchronous=OFF;
+                PRAGMA cache_size=-20000;
+                PRAGMA mmap_size=268435456;
+                PRAGMA temp_store=MEMORY;
+                PRAGMA page_size=8192;
+            ";
             pragmaCmd.ExecuteNonQuery();
         }
 
