@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.Encodings.Web;
 using ConsoleAppFramework;
 using Microsoft.Data.Sqlite;
+using System.Diagnostics;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 string DbPath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "defs.db");
@@ -377,6 +378,84 @@ app.Add("install", () =>
 
     Console.WriteLine($"rimsearcher 已加入用户 PATH。\n路径: {exeDir}\n重启终端后全局可用。");
 });
+
+app.Add("update", () =>
+{
+    using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("RimSearcher");
+
+    string tag = null!;
+    try
+    {
+        var response = http.GetAsync("https://github.com/kearril/RimSearcher/releases/latest").Result;
+        if (response.StatusCode != System.Net.HttpStatusCode.Redirect)
+            throw new Exception($"Unexpected status: {(int)response.StatusCode}");
+        var location = response.Headers.Location?.ToString()
+            ?? throw new Exception("No Location header in redirect");
+        tag = location[(location.LastIndexOf('/') + 1)..];
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"无法检查更新: {ex.Message}");
+        Environment.Exit(1);
+    }
+
+    var latestVer = tag.StartsWith('v') ? tag[1..] : tag;
+    var currentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!.ToString();
+    while (currentVer.EndsWith(".0") && currentVer.Count(c => c == '.') > 1)
+        currentVer = currentVer[..^2];
+
+    if (new Version(latestVer) <= new Version(currentVer))
+    {
+        Console.WriteLine($"rimsearcher 已是最新 ({currentVer})");
+        return;
+    }
+
+    Console.WriteLine($"当前: {currentVer}  最新: {latestVer}");
+
+    var downloadUrl = $"https://github.com/kearril/RimSearcher/releases/download/{tag}/rimsearcher.exe";
+    var exeDir = Path.GetDirectoryName(Environment.ProcessPath)!;
+    var newPath = Path.Combine(exeDir, "rimsearcher.new.exe");
+
+    try
+    {
+        using var stream = http.GetStreamAsync(downloadUrl).Result;
+        using var file = File.Create(newPath);
+        stream.CopyTo(file);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"下载失败: {ex.Message}");
+        TryDelete(newPath);
+        Environment.Exit(1);
+    }
+
+    var batPath = Path.Combine(exeDir, "rimsearcher.update.bat");
+    File.WriteAllText(batPath, $"@echo off\r\ntimeout /t 2 /nobreak > nul\r\nmove /y \"{newPath}\" \"{Environment.ProcessPath}\"\r\ndel \"%~f0\"\r\n");
+
+    try
+    {
+        Process.Start(new ProcessStartInfo("cmd", $"/c \"{batPath}\"")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"更新脚本启动失败: {ex.Message}");
+        Console.WriteLine($"新版本已下载到: {newPath}");
+        Environment.Exit(1);
+    }
+
+    Console.WriteLine($"已下载 {latestVer}，正在安装...");
+    Environment.Exit(0);
+});
+
+static void TryDelete(string path)
+{
+    try { File.Delete(path); } catch { }
+}
 
 app.Run(args);
 
