@@ -360,4 +360,23 @@ app.Add("mods", () =>
     Console.WriteLine(ToJson(results));
 });
 
+app.Add("install", () =>
+{
+    var exeDir = Path.GetDirectoryName(Environment.ProcessPath)!;
+    var currentPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+
+    if (currentPath.Split(';').Any(p => p.Equals(exeDir, StringComparison.OrdinalIgnoreCase)))
+    {
+        Console.WriteLine("rimsearcher 已在 PATH 中。");
+        return;
+    }
+
+    Environment.SetEnvironmentVariable("Path",
+        currentPath.TrimEnd(';') + ";" + exeDir,
+        EnvironmentVariableTarget.User);
+
+    Console.WriteLine($"rimsearcher 已加入用户 PATH。\n路径: {exeDir}\n重启终端后全局可用。");
+});
+
 app.Run(args);
+
