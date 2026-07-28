@@ -12,7 +12,6 @@
 
     <ItemGroup>
       <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.4871" />
-      <PackageReference Include="Lib.Harmony.Ref" Version="2.4.2" />
       <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
     </ItemGroup>
 
