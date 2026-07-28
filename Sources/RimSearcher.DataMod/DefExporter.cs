@@ -38,7 +38,7 @@ public static class DefExporter
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibrary(string lpFileName);
 
-    public static void Export(string dbPath, Action<string>? log = null)
+    public static void Export(string dbPath, Action<string>? log = null, Action<int, int, string>? progress = null)
     {
         void Log(string msg) => log?.Invoke(msg);
 
@@ -84,6 +84,17 @@ public static class DefExporter
         var defTypes = GenDefDatabase.AllDefTypesWithDatabases().ToList();
         Log($"发现 {defTypes.Count} 个 Def 类型");
 
+        // Pre-count total defs for accurate progress
+        int totalTypeCount = defTypes.Count;
+        int estimatedTotal = 0;
+        foreach (var dt in defTypes)
+        {
+            try { estimatedTotal += GenDefDatabase.GetAllDefsInDatabaseForDef(dt).Count(); }
+            catch { }
+        }
+        Log($"预估总数: {estimatedTotal} 个 Def");
+        progress?.Invoke(0, estimatedTotal, "开始处理...");
+
         int totalDefs = 0;
         int defId = 0;
         var fieldValueInserts = new List<(int defId, string fieldPath, string fieldValue)>();
@@ -114,6 +125,7 @@ public static class DefExporter
             var pFtsDesc = ftsInsertCmd.Parameters.Add("@fdesc", System.Data.DbType.String);
             var pFtsTxt = ftsInsertCmd.Parameters.Add("@ftxt", System.Data.DbType.String);
 
+            int typeIndex = 0;
             foreach (var defType in defTypes)
             {
                 IEnumerable<Def> defs;
@@ -189,6 +201,8 @@ public static class DefExporter
                         Log($"已处理 {totalDefs} 个 Def...");
                     }
                 }
+                typeIndex++;
+                progress?.Invoke(totalDefs, estimatedTotal, $"{typeName}: {totalDefs} / {estimatedTotal}");
             }
         }
 
