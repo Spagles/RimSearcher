@@ -4,11 +4,14 @@ using System.Text;
 using Verse;
 
 namespace RimSearcher.DataMod;
+using System.Collections.Concurrent;
 
 using System.Runtime.InteropServices;
 
 public static class DefExporter
 {
+    private static readonly ConcurrentDictionary<Type, FieldInfo[]> FieldCache = new();
+
     private static readonly HashSet<string> ExcludedNamespaces = new()
     {
         "UnityEngine",
@@ -29,6 +32,9 @@ public static class DefExporter
         "ignoreConfigErrors", "ignoreIllegalLabelCharacterConfigError",
         "index", "shortHash"
     };
+
+    private static FieldInfo[] GetCachedFields(Type t) =>
+        FieldCache.GetOrAdd(t, t => t.GetFields(BindingFlags.Public | BindingFlags.Instance));
 
     private static readonly HashSet<string> SkipFieldPrefixes = new()
     {
@@ -217,6 +223,9 @@ public static class DefExporter
     private static void CreateSchema(SQLiteConnection conn)
     {
         using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA encoding='UTF-8'";
+        cmd.ExecuteNonQuery();
+
         cmd.CommandText = @"
             CREATE TABLE defs (
                 id          INTEGER PRIMARY KEY,
@@ -425,7 +434,7 @@ public static class DefExporter
 
             // General objects: serialize public instance fields
             sb.Append('{');
-            var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var fields = GetCachedFields(t);
             bool firstField = true;
             foreach (var field in fields)
             {
@@ -567,7 +576,7 @@ public static class DefExporter
             }
 
             // General object: iterate public instance fields
-            var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var fields = GetCachedFields(t);
             foreach (var field in fields)
             {
                 if (count >= MaxFieldValuesPerDef) return;
