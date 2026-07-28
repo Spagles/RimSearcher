@@ -21,6 +21,20 @@ public static class DefExporter
     private const int MaxJsonDepth = 10;
     private const int BatchSize = 500;
 
+    private const int MaxFieldValuesPerDef = 5000;
+
+    private static readonly HashSet<string> SkipFieldNames = new()
+    {
+        "debugRandomId", "defNameHash", "generated",
+        "ignoreConfigErrors", "ignoreIllegalLabelCharacterConfigError",
+        "index", "shortHash"
+    };
+
+    private static readonly HashSet<string> SkipFieldPrefixes = new()
+    {
+        "modContentPack."
+    };
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibrary(string lpFileName);
 
@@ -199,7 +213,6 @@ public static class DefExporter
             CREATE UNIQUE INDEX idx_defs_name_type ON defs(def_name, def_type);
             CREATE INDEX idx_defs_type ON defs(def_type);
             CREATE INDEX idx_defs_mod ON defs(mod_name);
-            CREATE INDEX idx_defs_label ON defs(label);
 
             CREATE TABLE field_values (
                 def_id      INTEGER NOT NULL REFERENCES defs(id),
@@ -215,7 +228,8 @@ public static class DefExporter
                 def_name,
                 label,
                 description,
-                full_text
+                full_text,
+                tokenize='unicode61'
             );
         ";
         cmd.ExecuteNonQuery();
@@ -253,7 +267,53 @@ public static class DefExporter
         {
             sb.Append(t).Append(' ');
         }
-        return sb.ToString().Trim();
+        var text = sb.ToString().Trim();
+        return ExpandCjkBigrams(text);
+    }
+
+    private static string ExpandCjkBigrams(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        var result = new StringBuilder(text);
+        int runStart = -1;
+
+        for (int i = 0; i <= text.Length; i++)
+        {
+            bool isCjk = i < text.Length && IsCjkChar(text[i]);
+
+            if (isCjk)
+            {
+                if (runStart < 0) runStart = i;
+            }
+            else
+            {
+                if (runStart >= 0)
+                {
+                    int runLen = i - runStart;
+                    if (runLen >= 2)
+                    {
+                        result.Append(' ');
+                        for (int j = runStart; j < i - 1; j++)
+                        {
+                            result.Append(text[j]);
+                            result.Append(text[j + 1]);
+                            result.Append(' ');
+                        }
+                    }
+                    runStart = -1;
+                }
+            }
+        }
+
+        return result.ToString();
+    }
+
+    private static bool IsCjkChar(char c)
+    {
+        return (c >= 0x4E00 && c <= 0x9FFF)    // CJK Unified Ideographs
+            || (c >= 0x3400 && c <= 0x4DBF)    // CJK Extension A
+            || (c >= 0x20000 && c <= 0x2A6DF); // CJK Extension B (surrogate pairs, handled as two chars)
     }
 
     #region JSON Serialization
@@ -399,13 +459,27 @@ public static class DefExporter
     private static void ExtractFieldValues(Def def, int defId, List<(int, string, string)> inserts, List<string> allTexts)
     {
         var visited = new HashSet<object>();
-        ExtractFieldValuesRecursive(def, defId, "", inserts, allTexts, visited, 0);
+        int count = 0;
+        ExtractFieldValuesRecursive(def, defId, "", inserts, allTexts, visited, 0, ref count);
+    }
+    private static bool TryInsertFieldValue(int defId, string fieldPath, string fieldValue, List<(int, string, string)> inserts, List<string> allTexts, ref int count)
+    {
+        if (count >= MaxFieldValuesPerDef) return false;
+        if (string.IsNullOrEmpty(fieldValue)) return true;
+        if (SkipFieldNames.Contains(fieldPath)) return true;
+        foreach (var prefix in SkipFieldPrefixes)
+            if (fieldPath.StartsWith(prefix, StringComparison.Ordinal)) return true;
+        allTexts.Add(fieldValue);
+        inserts.Add((defId, fieldPath, fieldValue));
+        count++;
+        return true;
     }
 
-    private static void ExtractFieldValuesRecursive(object? obj, int defId, string pathPrefix, List<(int, string, string)> inserts, List<string> allTexts, HashSet<object> visited, int depth)
+    private static void ExtractFieldValuesRecursive(object? obj, int defId, string pathPrefix, List<(int, string, string)> inserts, List<string> allTexts, HashSet<object> visited, int depth, ref int count)
     {
         if (obj == null) return;
         if (depth > MaxFieldDepth) return;
+        if (count >= MaxFieldValuesPerDef) return;
 
         Type t = obj.GetType();
 
@@ -417,57 +491,54 @@ public static class DefExporter
 
         try
         {
-            // Collections — BEFORE namespace check
+            // Collections
             if (obj is System.Collections.IList list)
             {
-                for (int i = 0; i < list.Count; i++)
+                for (int i = 0; i < list.Count && count < MaxFieldValuesPerDef; i++)
                 {
                     string itemPath = string.IsNullOrEmpty(pathPrefix) ? $"[{i}]" : $"{pathPrefix}[{i}]";
                     var item = list[i];
                     if (item is string strVal)
                     {
-                        allTexts.Add(strVal);
-                        if (strVal.Length > 0) inserts.Add((defId, itemPath, strVal));
+                        if (!TryInsertFieldValue(defId, itemPath, strVal, inserts, allTexts, ref count)) return;
                     }
                     else if (item is Type typeVal)
                     {
-                        allTexts.Add(typeVal.FullName ?? typeVal.Name);
-                        inserts.Add((defId, itemPath, typeVal.FullName ?? typeVal.Name));
+                        if (!TryInsertFieldValue(defId, itemPath, typeVal.FullName ?? typeVal.Name, inserts, allTexts, ref count)) return;
                     }
                     else if (item != null && item.GetType().IsClass && !(item is ValueType))
                     {
-                        ExtractFieldValuesRecursive(item, defId, itemPath, inserts, allTexts, visited, depth + 1);
+                        ExtractFieldValuesRecursive(item, defId, itemPath, inserts, allTexts, visited, depth + 1, ref count);
                     }
                 }
                 return;
             }
 
-            // Dictionaries — BEFORE namespace check
+            // Dictionaries
             if (obj is System.Collections.IDictionary dict)
             {
                 foreach (System.Collections.DictionaryEntry entry in dict)
                 {
+                    if (count >= MaxFieldValuesPerDef) return;
                     string keyStr = entry.Key?.ToString() ?? "";
                     string entryPath = string.IsNullOrEmpty(pathPrefix) ? keyStr : $"{pathPrefix}.{keyStr}";
                     if (entry.Value is string dictVal)
                     {
-                        allTexts.Add(dictVal);
-                        if (dictVal.Length > 0) inserts.Add((defId, entryPath, dictVal));
+                        if (!TryInsertFieldValue(defId, entryPath, dictVal, inserts, allTexts, ref count)) return;
                     }
                     else if (entry.Value is Type typeVal)
                     {
-                        allTexts.Add(typeVal.FullName ?? typeVal.Name);
-                        inserts.Add((defId, entryPath, typeVal.FullName ?? typeVal.Name));
+                        if (!TryInsertFieldValue(defId, entryPath, typeVal.FullName ?? typeVal.Name, inserts, allTexts, ref count)) return;
                     }
                     else if (entry.Value != null && entry.Value.GetType().IsClass && !(entry.Value is ValueType))
                     {
-                        ExtractFieldValuesRecursive(entry.Value, defId, entryPath, inserts, allTexts, visited, depth + 1);
+                        ExtractFieldValuesRecursive(entry.Value, defId, entryPath, inserts, allTexts, visited, depth + 1, ref count);
                     }
                 }
                 return;
             }
 
-            // Skip excluded namespaces for general objects (AFTER IList/IDict)
+            // Skip excluded namespaces for general objects
             string? ns = t.Namespace;
             if (ns != null)
             {
@@ -481,6 +552,7 @@ public static class DefExporter
             var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
             foreach (var field in fields)
             {
+                if (count >= MaxFieldValuesPerDef) return;
                 if (field.Name.StartsWith("<", StringComparison.Ordinal)) continue;
 
                 string fieldPath = string.IsNullOrEmpty(pathPrefix) ? field.Name : $"{pathPrefix}.{field.Name}";
@@ -493,33 +565,35 @@ public static class DefExporter
 
                 if (fieldValue is string strField)
                 {
-                    allTexts.Add(strField);
-                    if (strField.Length > 0) inserts.Add((defId, fieldPath, strField));
+                    if (!TryInsertFieldValue(defId, fieldPath, strField, inserts, allTexts, ref count)) return;
                 }
                 else if (fieldValue is Type typeField)
                 {
-                    string typeName = typeField.FullName ?? typeField.Name;
-                    allTexts.Add(typeName);
-                    inserts.Add((defId, fieldPath, typeName));
+                    if (!TryInsertFieldValue(defId, fieldPath, typeField.FullName ?? typeField.Name, inserts, allTexts, ref count)) return;
                 }
                 else if (fieldValue is ValueType)
                 {
                     string? valStr = fieldValue.ToString();
-                    if (valStr != null) { allTexts.Add(valStr); if (valStr.Length > 0) inserts.Add((defId, fieldPath, valStr)); }
+                    if (valStr != null)
+                    {
+                        if (!TryInsertFieldValue(defId, fieldPath, valStr, inserts, allTexts, ref count)) return;
+                    }
                 }
                 else if (fieldValue is Def defRef)
                 {
-                    allTexts.Add(defRef.defName);
-                    if (!string.IsNullOrEmpty(defRef.defName)) inserts.Add((defId, fieldPath, defRef.defName));
+                    if (!TryInsertFieldValue(defId, fieldPath, defRef.defName, inserts, allTexts, ref count)) return;
                 }
                 else if (fieldValue.GetType().IsEnum)
                 {
                     string? enumStr = fieldValue.ToString();
-                    if (enumStr != null) { allTexts.Add(enumStr); if (enumStr.Length > 0) inserts.Add((defId, fieldPath, enumStr)); }
+                    if (enumStr != null)
+                    {
+                        if (!TryInsertFieldValue(defId, fieldPath, enumStr, inserts, allTexts, ref count)) return;
+                    }
                 }
                 else
                 {
-                    ExtractFieldValuesRecursive(fieldValue, defId, fieldPath, inserts, allTexts, visited, depth + 1);
+                    ExtractFieldValuesRecursive(fieldValue, defId, fieldPath, inserts, allTexts, visited, depth + 1, ref count);
                 }
             }
         }
