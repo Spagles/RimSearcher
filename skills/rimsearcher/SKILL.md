@@ -62,12 +62,25 @@ Fuzzy value matching → use `search`.
 ### 4. Read Source
 
 ```
-load_assembly(gameDir="/path/to/rw16", contextAlias="rw16")
+list_contexts                           ← check registered aliases first
+  → activate by name if found
+  → if not found, ask the user for paths
+```
+
+Ask: "请提供需要分析的程序集路径（例如 D:\\SteamLibrary\\...\\RimWorldWin64_Data\\Managed，或 Mods/XXX/Assemblies/XXX.dll）"
+Then auto-name aliases from file names and load once per assembly:
+
+```
+load_assembly(assemblyPath="/path/to/Assembly-CSharp.dll", contextAlias="rw")
+load_assembly(assemblyPath="/path/to/CombatExtended.dll", contextAlias="ce")
+```
+
+```
 search_symbols(query="RimWorld.CompShield")
 get_decompiled_source(memberId="<id>")
 ```
 
-Drop `contextAlias` after getting a `memberId` — it auto-routes.
+Once you have a `memberId`, drop `contextAlias` — it auto-routes.
 Use `resolve_member_id` for fully-qualified guesses, `list_members(mode="signatures")` before guessing methods.
 
 ## Guardrails
@@ -87,15 +100,21 @@ When uncertain about an API you cannot verify, mark it `[UNVERIFIED]` and state 
 - `find` returns `[]` → use full name or switch to `search`.
 - `search` returns nothing → add `*` or try a shorter term.
 - DecompilerServer errors → follow the `candidates` hint in the structured error.
+- DecompilerServer 无响应 → run `list_contexts`; registered aliases persist across restarts.
 
 ## DecompilerServer MCP
 
 ```
-load_assembly → search_symbols → list_members → get_decompiled_source
-                                    ↓
-              find_callers / find_callees / get_il (before patching)
-              compare_contexts / compare_symbols   (version diffs)
+list_contexts / status                ← first: check registered
+  → select_context("rw16")            ←    activate if found
+  → ask user for paths                ←    if not: auto-name from file
+
+search_symbols → list_members → get_decompiled_source
+        ↓
+find_callers / find_callees / get_il  (before patching)
+compare_contexts / compare_symbols    (version diffs)
 ```
 
-DecompilerServer is the source of truth for C#. No loaded assembly → load first.
+Registered aliases persist — ask only once. `select_context` loads on demand,
+`load_assembly` is for new paths with auto-named aliases.
 Full workflow → [DecompilerServer MCP](references/decompiler-mcp.md).

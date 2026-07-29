@@ -2,16 +2,18 @@
 
 Once you have C# type names from `rimsearcher`, use the DecompilerServer MCP.
 
-## Loading the Assembly
+## Loading Assemblies
+
+Registered aliases persist across MCP restarts — always check first:
 
 ```
-load_assembly(gameDir="/path/to/RimWorld", contextAlias="rw16")
+list_contexts / status                       ← what's already registered?
+select_context(contextAlias="rw16")          ← activate if found
+load_assembly(assemblyPath="...", contextAlias="...") ← only for new paths
 ```
 
-`gameDir` auto-discovers `RimWorldWin64_Data/Managed/Assembly-CSharp.dll` (Unity layout).
-Alternatively use `assemblyPath` for a direct DLL path.
-
-Registered aliases are restored across MCP restarts — you may not need to reload.
+When no aliases are registered, ask the user for each assembly path. Auto-name aliases from file names.
+Load once per assembly. `gameDir` auto-discovers Unity layouts; `assemblyPath` is for direct paths.
 
 ## Search + Read
 
