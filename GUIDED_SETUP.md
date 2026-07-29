@@ -10,7 +10,7 @@ First, determine your capabilities:
 - If you can download and write files → automate as much as possible
 - If you cannot → give the user clear copy-paste instructions
 
-Determine where to place Skill files and how to configure MCP based on your runtime environment. Do not ask the user which client they are using.
+Determine where to place Skill files and how to configure MCP based on your runtime environment. 
 
 ## Goals
 
@@ -43,7 +43,7 @@ You need this path to install the DataMod and configure DecompilerServer.
 Create a `~/rimsearcher/` directory and place `rimsearcher.exe` inside. Extract `skills.zip` for later use.
 
 **DecompilerServer:** Download and install from `https://github.com/pardeike/DecompilerServer`.
-Handle MCP configuration on your own based on your runtime environment. Do not ask the user for configuration details.
+Handle MCP configuration on your own based on your runtime environment. 
 
 ### Step 3: Install DataMod
 
