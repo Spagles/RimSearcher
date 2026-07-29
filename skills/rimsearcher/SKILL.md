@@ -21,67 +21,68 @@ types                     ← def_type stats
 mods                      ← mod stats
 ```
 
-Full parameter tables → [CLI Reference](references/cli-reference.md).
+## Rules
+
+These are the CLI behaviors that guessing wrong wastes turns.
+
+### search — prefix wildcard is mandatory
+FTS5 token matching, **not** SQL LIKE. `shield` matches only the standalone token `shield` — it will not match `ShieldBelt` (one token). Always add `*`: `shield*`.
+CJK is auto-bigram: `护盾` already matches `护盾腰带`, no wildcard needed.
+
+### find — value is exact match
+`find <path> <value>` uses `=` equality. `find compClass Shield` matches nothing; you need the full name: `find compClass RimWorld.CompShield`. For partial names, use `search`.
+
+### get — multi-type and `--brief`
+A defName can exist in multiple def_types (e.g. `Human` is in BodyDef, ThingDef, HediffGiverSetDef). Without `--type`, the command exits with code 2 and prints candidates — this is NOT a crash, just add `--type` and retry.
+`--brief` returns `{thing_class, comp_classes[]}` — feed those field names directly to the decompiler.
+
+### output format
+All commands: JSON to stdout, errors/hints to stderr.
 
 ## Pipeline
 
-Run these steps **before writing code**.
+Match the shortest path. Unsure? Default to **Full Analysis**.
 
-### 1. Search
+### Quick Lookup
+User knows the defName or wants to browse/enumerate. No search needed.
+  `get` / `fields` / `list` / `types` / `mods` / `values` → done
+→ Verify for `get`/`fields`/`list`; skip for `types`/`mods`/`values`
 
-```bash
-rimsearcher search "shield*" --type ThingDef
-rimsearcher search "护盾" --count
-```
+### Full Analysis *(default)*
+User wants to understand a game mechanic end-to-end.
 
-Always prefix-search (`shield*`). Without `*`, compound names like `Apparel_ShieldBelt` are missed.
+1. `search "keyword*" --type T`          ← always prefix-wildcard
+2. `get <name> --type T --brief`          ← extracts `thing_class`, `comp_classes[]`
+   If `comp_classes` is empty (StatDef, JobDef, HediffDef, etc.):
+   use `fields <name> --type <T>` and grep for `*Class`, `workerClass`, `hediffClass`, `driverClass`.
+3. Decompiler:
+   `list_contexts` → `select_context` or ask user for paths
+   `load_assembly(path, contextAlias)` — auto-name from file
+   `search_symbols(query="<thing_class>")` → `get_decompiled_source(memberId)`
+4. After source: read `references/decompiler-mcp.md`
+5. Verify
 
-### 2. Get C# Types
+### Reverse Lookup
+User asks "which Defs use this C# class?"
 
-```bash
-rimsearcher get Apparel_ShieldBelt --type ThingDef --brief
-```
+1. `find <fieldPath> <fullClassName>`    ← value is exact match
+2. Optional: `get --brief` on key results → decompiler
+   → After source: read `references/decompiler-mcp.md`
+3. Verify
 
-Returns `thing_class` and `comp_classes[]`. Feed these names directly to step 4.
+### Direct Source
+User names a C# type directly. Skip CLI.
 
-If `comp_classes` is empty (non-ThingDef: StatDef, JobDef, HediffDef, etc.), use
-`fields <name> --type <T>` and grep for `*Class`, `workerClass`, `hediffClass`, or `driverClass`.
+1. Decompiler:
+   `list_contexts` → `select_context` or ask user for paths
+   `load_assembly(path, contextAlias)`
+   `search_symbols(query="<ClassName>")` → `get_decompiled_source(memberId)`
+2. After source: read `references/decompiler-mcp.md`
 
-Multi-type match without `--type` → error with a candidate list. Add `--type` and retry.
+## Verify
 
-### 3. Reverse Lookup
-
-```bash
-rimsearcher find compClass RimWorld.CompShield
-rimsearcher find thingClass RimWorld.Building_Turret
-```
-
-Path is suffix-matched, value is exact. `find compClass Shield` won't match `RimWorld.CompShield`.
-Fuzzy value matching → use `search`.
-
-### 4. Read Source
-
-```
-list_contexts                           ← check registered aliases first
-  → activate by name if found
-  → if not found, ask the user for paths
-```
-
-Ask: "请提供需要分析的程序集路径（例如 D:\\SteamLibrary\\...\\RimWorldWin64_Data\\Managed，或 Mods/XXX/Assemblies/XXX.dll）"
-Then auto-name aliases from file names and load once per assembly:
-
-```
-load_assembly(assemblyPath="/path/to/Assembly-CSharp.dll", contextAlias="rw")
-load_assembly(assemblyPath="/path/to/CombatExtended.dll", contextAlias="ce")
-```
-
-```
-search_symbols(query="RimWorld.CompShield")
-get_decompiled_source(memberId="<id>")
-```
-
-Once you have a `memberId`, drop `contextAlias` — it auto-routes.
-Use `resolve_member_id` for fully-qualified guesses, `list_members(mode="signatures")` before guessing methods.
+`types`, `mods`, `values`, `install`: skip this step.
+All other commands: read `references/cli-reference.md` to confirm output fields, parameter defaults, and edge-case behaviors.
 
 ## Guardrails
 
@@ -102,19 +103,3 @@ When uncertain about an API you cannot verify, mark it `[UNVERIFIED]` and state 
 - DecompilerServer errors → follow the `candidates` hint in the structured error.
 - DecompilerServer 无响应 → run `list_contexts`; registered aliases persist across restarts.
 
-## DecompilerServer MCP
-
-```
-list_contexts / status                ← first: check registered
-  → select_context("rw16")            ←    activate if found
-  → ask user for paths                ←    if not: auto-name from file
-
-search_symbols → list_members → get_decompiled_source
-        ↓
-find_callers / find_callees / get_il  (before patching)
-compare_contexts / compare_symbols    (version diffs)
-```
-
-Registered aliases persist — ask only once. `select_context` loads on demand,
-`load_assembly` is for new paths with auto-named aliases.
-Full workflow → [DecompilerServer MCP](references/decompiler-mcp.md).

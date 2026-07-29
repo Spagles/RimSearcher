@@ -1,7 +1,6 @@
 # CLI Command Reference
 
-Full parameter lists, output schemas, SQL semantics, and edge cases for every `rimsearcher` command.
-Load this file when the SKILL.md decision tree leads to a specific command but you need the details.
+Full parameter defaults, SQL schema details, and edge-case behaviors. Load this only when you need internals beyond the [SKILL.md](../SKILL.md) summaries — everyday queries are covered there.
 
 All commands output JSON to stdout and errors/hints to stderr. The database (`defs.db`) must be in
 the same directory as `rimsearcher.exe`.
