@@ -401,9 +401,8 @@ app.Add("update", () =>
     }
 
     var latestVer = tag.StartsWith('v') ? tag[1..] : tag;
-    var currentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!.ToString();
-    while (currentVer.EndsWith(".0") && currentVer.Count(c => c == '.') > 1)
-        currentVer = currentVer[..^2];
+    var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!;
+    var currentVer = $"{v.Major}.{v.Minor}.{v.Build}";
 
     if (new Version(latestVer) <= new Version(currentVer))
     {
@@ -419,7 +418,9 @@ app.Add("update", () =>
 
     try
     {
-        using var stream = http.GetStreamAsync(downloadUrl).Result;
+        using var dl = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true });
+        dl.DefaultRequestHeaders.UserAgent.ParseAdd("RimSearcher");
+        using var stream = dl.GetStreamAsync(downloadUrl).Result;
         using var file = File.Create(newPath);
         stream.CopyTo(file);
     }
