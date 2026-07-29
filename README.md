@@ -196,9 +196,11 @@ RimSearcher.DataMod 是一个游戏内模组，运行时通过反射扫描 `DefD
 
 ## 免责声明
 
-RimSearcher 是 RimWorld Mod 开发的辅助工具，仅读取和分析用户本地已安装的游戏数据。
-不修改、不捆绑、不分发任何 RimWorld 游戏文件。使用者应拥有合法的 RimWorld 副本。
-本项目与 Ludeon Studios 无关联。
+RimSearcher 仅读取和分析你本地已安装的游戏数据，不捆绑、不分发任何 RimWorld 游戏文件或第三方模组资产。
+
+使用本工具分析模组时，请注意被分析的模组受其各自的许可协议约束。若基于分析结果创作衍生内容，须遵守对应模组的开源规范。导出数据中可能包含模组作者的创作内容（Def 名称、描述文本等），版权归原作者所有。
+
+本项目与 Ludeon Studios 无关联。RimWorld 为 Ludeon Studios 的商标。
 
 ## License
 
