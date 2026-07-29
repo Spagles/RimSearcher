@@ -1,361 +1,207 @@
 # RimSearcher
-[![Latest Release](https://img.shields.io/github/v/release/kearril/RimSearcher?style=flat-square&color=333&logo=github)](https://github.com/kearril/RimSearcher/releases/latest)
 
-一个基于 MCP 的 RimWorld 源码检索与分析服务。它把本地 RimWorld C# / XML 数据建立为可查询索引，让 AI 助手能在真实源码上定位、追踪、阅读和解释逻辑，减少“幻觉式回答”。
+#### RimSearcher V3 全面焕新重置，工具从该版本开始，推倒了过去的mcp架构，转而使用skills+cli的设计模式，这带来了更好的性能，更低的占用以及更智能的ai决策，重点是现在支持模组环境的代码分析了！
 
-采用 Roslyn + XML 继承解析，支持高并发只读查询。
-> MCP 协议版本: `2025-11-25`
+## 介绍
 
----
+RimSearcher 特化为 **Def 数据层**——XML 定义、字段结构、类型关联。C# 源码分析交由
+[DecompilerServer](https://github.com/pardeike/DecompilerServer)，一个专门面向 Unity 程序集的
+反编译 MCP 工具。它能直接反编译加载的 .NET 程序集，提供类型搜索、成员签名浏览、IL 指令级查看、
+调用链追踪，以及跨版本方法体比对——让 AI 看到的不再是"可能存在的 API"，而是真正运行的代码。
+正如其设计目标所言：*"I can inspect the actual code that runs"*。
 
-## 1. 核心特性
+Skill 文件将两者串联：CLI 定位 Def → 提取 C# 类型名 → DecompilerServer 读源码，形成完整的
+分析管线。
 
-### 精准 C# 解析（Roslyn）
-- 单次解析提取类型继承和成员索引（方法/属性/字段/事件）
-- 支持类大纲、成员体提取、继承链追踪
-- 支持方法、属性、构造器、索引器、运算符级别读取
+多模组环境的支持来自两个层面的配合：DecompilerServer 可同时加载原版和任意模组的
+`.dll` 程序集，各自分配独立上下文别名，AI 能够并排查看多个程序集的源码和 IL，精确定位 Hook 点
+和兼容性边界。而 RimSearcher 的 DataMod 在游戏内将当前模组环境的 Def 数据导出为 SQLite 数据库，
+CLI 为其提供全文检索——两者相辅相成，一个负责 C#，一个负责 XML 数据。
 
-### XML Def 继承合并
-- 递归解析 `ParentName` 链路
-- 合并父子节点并处理列表容器/覆盖逻辑
-- 输出可直接阅读的“最终 Def 结果”
+## 快速开始
 
-### C# 与 XML 语义桥接
-- 从 Def 自动提取关联 C# 类型（如 thingClass / compClass / workerClass）
-- 在 `inspect` 中同时展示 Def 信息与关联代码路径
+**不会安装？** 将下面这句话发送给你的 AI 助手，它会一步步引导你完成全部安装：
 
-### 面向查询性能优化
-- 预建索引 + N-gram 候选筛选
-- 启动后冻结索引（`FrozenDictionary`）优化只读查询吞吐
-- 搜索结果带上限控制，避免超长输出拖慢上下文
-
-### 低 Token 消耗（LLM 友好）
-- 采用先定位再深入的查询链路（`locate` → `inspect`/`trace` → `read_code`），避免一次返回大段无关文本
-- `locate` / `trace` / `search_regex` 工具采用结果上限与预览截断，控制上下文体积并保持关键信息密度
-- `read_code` 支持按 `methodName`/`extractClass` 精确读取代码，未指定成员时再按小范围行号读取，避免一次返回整个文件
-
-### 运行模型与边界
-- 本地运行，核心检索不依赖网络
-- 网络请求仅用于版本更新提示（可关闭）
+> Read https://raw.githubusercontent.com/kearril/RimSearcher/main/GUIDED_SETUP.md and guide me through the installation.
 
 ---
 
-## 2. 六大工具
+### 手动安装
 
-以下为实际注册的 MCP 工具名与能力说明。
+如果你已经熟悉工具链，可以按以下步骤自行配置。
 
-###  `rimworld-searcher__locate`
-全局模糊定位入口。
+### 1. 下载
 
-**支持内容**
-- C# 类型、成员（方法/属性/字段）、XML Def、文件名
-- 过滤语法：`type:` `method:` `field:` `def:`
-- CamelCase 缩写与拼写容错（如 `JDW`）
+从 [Releases](https://github.com/kearril/RimSearcher/releases/latest) 下载：
 
-**示例查询**
-```text
-def:Apparel_ShieldBelt
-type:CompShield
-method:CompTick
-field:energy
+| 文件 | 说明                  |
+|---|-----------------------|
+| `rimsearcher.exe` | CLI 命令行工具        |
+| `RimSearcher_DataMod.zip` | 游戏内def数据导出模组 |
+| `skills.zip` | AI 助手技能文件（解压后使用） |
+
+还需要反编译 MCP：[DecompilerServer](https://github.com/pardeike/DecompilerServer) — 前往官网下载并配置该mcp工具。
+
+### 2. 安装模组
+
+解压 `RimSearcher_DataMod.zip` 到 RimWorld 的 `Mods/` 目录。启动游戏，在 Mod 列表中启用 **RimSearcherDataMod**。
+
+### 3. 导出数据
+
+进入游戏 → 选项 → Mod 设置 → RimSearcherDataMod → 点击`导出 Def 数据库`。
+
+> 进入游戏主菜单会出现一条 `BadImageFormatException` 红字，来源是 RimWorld 扫描
+> `Assemblies/` 目录时将原生 SQLite  DLL 当作 .NET 程序集加载。该异常被捕获忽略，
+> 不影响模组功能，可安全无视。
+
+导出完成后，将生成的 `defs.db` 放到 `rimsearcher.exe` 同目录下。
+
+### 4. 配置 CLI
+
+在 `rimsearcher.exe` 所在目录打开终端，执行：
+
+```bash
+rimsearcher install
 ```
 
+注意，完成这一步后，该exe文件请不要随意移动位置，否则系统会找不到对应的path，或者移动后重复该操作
+
+### 5. 配置 AI 技能
+
+解压 `skills.zip`，将 `skills/rimsearcher/` 放入 你使用的ai助手的 skills 目录，
+
+重启 AI 客户端后生效。
+
 ---
 
-###  `rimworld-searcher__inspect`
-深度分析单个 Def 或 C# 类型。
+## 组件
 
-**Def 模式**
-- 展示 Def 类型、来源文件
-- 返回继承合并后的 XML
-- 提取关联 C# 类型并尝试映射到索引文件
 
-**C# 模式**
-- 返回继承关系图
-- 返回类成员大纲（字段/属性/方法签名）
+| 组件 | 说明                                                                                                                             |
+|---|----------------------------------------------------------------------------------------------------------------------------------|
+| **RimSearcher.DataMod** | 游戏内反射导出模组。运行时将当前加载的 Def 数据导出为 `defs.db`，label 和 description 为游戏当前语言的文本 |
+| **rimsearcher CLI** | .NET 命令行工具。10 个命令：`search` `list` `get` `find` `fields` `values` `types` `mods` `install` `update`                     |
+| **rimsearcher Skill** | AI 助手技能文件。教 AI 使用 CLI + 反编译 MCP 定位和分析 RimWorld 源码，含反幻觉规则                                              |
 
-**示例**
-```text
-Apparel_ShieldBelt
-RimWorld.CompShield
+## 贡献 Skill
+
+欢迎将你的 RimWorld Mod 开发经验贡献到 Skill 仓库。如果你有常用的分析流程、常见 Hook 点、
+或特定模组的兼容性经验，可以提交 PR 扩展 Skill 文件，让 AI 助手变得更懂 RimWorld。
+
+
+## 功能说明
+
+### search — 全文搜索
+
+```
+rimsearcher search <keyword> [--type T] [--mod M] [--limit N] [--count]
 ```
 
----
+FTS5 全文索引覆盖 Def 名称、标签、描述和所有字段值。中英文混合查询，支持前缀通配和布尔组合。
 
-###  `rimworld-searcher__trace`
-交叉引用追踪工具。
+### list — 分页浏览
 
-**模式**
-- `inheritors`：列出某基类/接口的子类
-- `usages`：查找符号文本引用（C# + XML），带行号预览
-
-**示例**
-```text
-symbol: ThingComp, mode: inheritors
-symbol: CompShield, mode: usages
+```
+rimsearcher list [--type T] [--mod M] [--limit N] [--offset N]
 ```
 
----
+按类型或所属 Mod 浏览 Def 列表，支持分页。无搜索开销，按 def_type、def_name 排序。
 
-###  `rimworld-searcher__read_code`
-精确读取 C# 代码片段。
+### get — 精确定位
 
-**支持读取方式**
-- 指定成员：`methodName`（支持方法/属性/构造器/索引器/运算符）
-- 指定类型：`extractClass`
-- 指定行区间：`startLine` + `lineCount`
-
-**路径支持**
-- 绝对路径
-- 已索引文件名（如 `CompShield.cs`）
-- 文件基名（如 `CompShield`）
-
-**示例**
-```text
-path: CompShield.cs, methodName: CompTick
+```
+rimsearcher get <defName> [--type T] [--brief]
 ```
 
----
+按名称定位 Def。`--brief` 提取关联的 C# 类型名（`thingClass`、`compClasses`），
+作为反编译 MCP 的搜索入口。多类型歧义时列出候选项。
 
-###  `rimworld-searcher__search_regex`
-全局正则检索（C# + XML）。
+### find — 反向查找
 
-**特性**
-- 可选 `fileFilter`（如 `.cs` / `.xml`）
-- 结果按文件分组，显示行号预览
-- 内置输出截断提示，避免超大响应
-
-**示例**
-```text
-pattern: class.*:.*ThingComp
-fileFilter: .cs
+```
+rimsearcher find <fieldPath> <value> [--type T] [--mod M] [--limit N]
 ```
 
----
+给定字段路径和 C# 类名，查找所有引用该类的 Def——适合追踪某个 Comp 或 ThingClass 被哪些物品使用。
 
-###  `rimworld-searcher__list_directory`
-目录浏览工具。
+### fields — 字段树
 
-**特性**
-- 列出目录下文件与子目录（子目录以 `/` 结尾）
-- 支持 `limit` 分页提示
-- 受 `PathSecurity` 白名单约束（除非显式关闭）
-
----
-
-## 2.5 系统架构
-
-```text
-RimSearcher Architecture (Narrow)
-
-MCP Client 
-  |
-  | JSON-RPC (MCP)
-  v
-RimSearcher.cs (runtime)
-  |- request routing / concurrency / cancel / progress / logging bridge
-  v
-Program.cs (bootstrap)
-  |- load config + PathSecurity
-  |- try cache -> fallback full scan -> save cache
-  |- start MCP server
-  |
-  +-- IndexCacheService
-  |     |- .cache/index/manifest.json
-  |     `- .cache/index/index.bin (compressed snapshot)
-  |
-  `-- UpdateChecker
-        `- .cache/.update-cache (latest version + check time)
-
-Tool Layer
-  |- locate | inspect | trace | read_code | search_regex | list_directory
-  |
-  +-- SourceIndexer
-  |     |- RoslynHelper / FuzzyMatcher / QueryParser
-  |     `- Local C# source (Assembly-CSharp)
-  |
-  `-- DefIndexer
-        |- XmlInheritanceHelper / FuzzyMatcher / QueryParser
-        `- Local RimWorld XML (Data/Defs...)
+```
+rimsearcher fields <defName> --type <T> [--limit N]
 ```
 
-**启动流程**
-1. 读取配置（优先 `RIMSEARCHER_CONFIG`，未设置时回退到同目录 `config.json`）
-2. 初始化路径安全策略
-3. 自动准备缓存目录（`<exe目录>/.cache/index`）
-4. 尝试加载索引缓存（`manifest.json` + `index.bin`）
-5. 缓存未命中时扫描 C# / XML 并建索引，然后回写缓存
-6. 冻结索引（读优化）
-7. 注册工具并启动 MCP 服务
+列出单个 Def 的完整字段树，直观查看嵌套结构。
 
----
+### values — 值枚举
 
-## 3. 典型工作流
-
-### 场景：分析护盾腰带如何生效
-1. `locate(def:Apparel_ShieldBelt)`：定位 Def
-2. `inspect(Apparel_ShieldBelt)`：看合并后 XML 与关联 C# 类型
-3. `inspect(RimWorld.CompShield)`：看继承链和类大纲
-4. `read_code(path=CompShield.cs, methodName=CompTick)`：读取核心逻辑
-5. `trace(symbol=CompShield, mode=usages)`：追踪相关引用
-
----
-
-## 4. 性能与安全
-
-| 维度 | 当前实现 |
-|------|----------|
-| 索引策略 | 启动优先加载本地缓存，未命中时扫描并冻结索引（`FrozenDictionary`） |
-| 索引缓存 | `manifest.json + index.bin`，默认目录 `<exe目录>/.cache/index` |
-| 模糊匹配 | N-gram 候选过滤 + 评分排序 |
-| 并发控制 | MCP 请求并发上限 10 |
-| 正则搜索保护 | 全局/单文件命中上限 + 行数上限 + regex 超时 |
-| 路径安全 | 白名单根目录校验（`SkipPathSecurity=false` 时生效） |
-
-### 索引缓存说明
-
-- 缓存目录：`RimSearcher.Server.exe` 同目录下 `/.cache/index`
-- 缓存文件：`manifest.json`（元数据）+ `index.bin`（压缩索引快照）
-- 首次启动通常会全量建索引并写缓存；二次启动通常会直接命中缓存，这能显著提升二次启动速度
-- 若需要强制重建，删除 `/.cache/index` 后重启该程序即可
-- 当前策略下，配置路径变化或缓存结构版本变化会触发自动重建
-
-
----
-
-## 5. 快速开始
-
-### 前置要求
-> 运行 Release 版 `RimSearcher.Server.exe` 需要 [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)；
-> 
-> 若需本地编译源码，则需要安装 .NET 10 SDK。
-
-### 安装步骤
-1. 从 [Releases](https://github.com/kearril/RimSearcher/releases) 下载 `RimSearcher.Server.exe`。
-2. 创建 `config.json`
-
-配置示例：
-```json
-{
-  "CsharpSourcePaths": [
-    "C:/Path/To/Your/RimWorld/Source"
-  ],
-  "XmlSourcePaths": [
-    "C:/SteamLibrary/steamapps/common/RimWorld/Data"
-  ],
-  "SkipPathSecurity": false,
-  "CheckUpdates": true
-}
+```
+rimsearcher values <fieldPath> [--limit N]
 ```
 
-字段说明：
-- `CsharpSourcePaths`: C# 源码目录（反编译源码目录，需要自己反编译导出游戏源码文件，这里不提供）
-- `XmlSourcePaths`: RimWorld `Data` 目录
-- `SkipPathSecurity`: `true` 时关闭路径白名单检查（仅建议本地可信环境）
-- `CheckUpdates`: 是否启用版本更新提示
+枚举任意字段路径的去重值集合。
 
-3. 在 MCP 客户端中把 `RimSearcher.Server.exe` 注册为 **stdio MCP Server**，并设置环境变量 `RIMSEARCHER_CONFIG` 指向上一步的 `config.json`。
+### types — 类型统计
 
-> 兼容模式说明：
-> - 若设置了 `RIMSEARCHER_CONFIG`，优先读取该路径。
-> - 若未设置，则回退到 `RimSearcher.Server.exe` 同目录下的 `config.json`。
-
-### 安装到 AI 助手（不同客户端配置差异）
-
-#### 通用 MCP 客户端（Claude Desktop / Gemini CLI / Cursor 等）
-```json
-{
-  "mcpServers": {
-    "RimSearcher": {
-      "command": "D:/Tools/RimSearcher/RimSearcher.Server.exe",
-      "args": [],
-      "env": {
-        "RIMSEARCHER_CONFIG": "D:/your/custom/path/config.json"
-      }
-    }
-  }
-}
+```
+rimsearcher types
 ```
 
-#### GitHub Copilot（`servers` 结构）
-```json
-{
-  "servers": {
-    "RimSearcher": {
-      "command": "D:/Tools/RimSearcher/RimSearcher.Server.exe",
-      "args": [],
-      "env": {
-        "RIMSEARCHER_CONFIG": "D:/your/custom/path/config.json"
-      }
-    }
-  }
-}
+列出所有 Def 类型及其数量，降序排列。
+
+### mods — Mod 统计
+
+```
+rimsearcher mods
 ```
 
-#### OpenCode（`mcp` 结构）
-```json
-{
-  "mcp": {
-    "RimSearcher": {
-      "type": "local",
-      "command": ["D:/Tools/RimSearcher/RimSearcher.Server.exe"],
-      "enabled": true,
-      "environment": {
-        "RIMSEARCHER_CONFIG": "D:/your/custom/path/config.json"
-      }
-    }
-  }
-}
+列出所有 Mod 及各自的 Def 数量，降序排列。
+
+
+### install — 安装到 PATH
+
+```
+rimsearcher install
 ```
 
-常见注意事项：
-- `command` 使用 `RimSearcher.Server.exe` 的绝对路径。
-- 推荐始终配置 `RIMSEARCHER_CONFIG` 指向明确路径，避免多环境切换时误读配置。
-- 若不设置 `RIMSEARCHER_CONFIG`，才要求 `config.json` 与 exe 在同一目录。
-- 修改客户端 MCP 配置后，重启客户端或重载 MCP 服务。
-- 若客户端有工具白名单/权限开关，确保已允许 `RimSearcher`。
+将 rimsearcher 所在目录加入用户 PATH，全局可用。重复执行自动跳过。
 
-### 本地验证
-手动验证时：
-- 方式 A：设置环境变量 `RIMSEARCHER_CONFIG` 指向目标 `config.json`。
-- 方式 B：不设置环境变量，把 `config.json` 放到 `RimSearcher.Server.exe` 同目录。
+### update — 自更新
 
-![配置示例](Image/Snipaste_2026-02-07_23-20-57.png)
+```
+rimsearcher update
+```
 
-然后运行 `RimSearcher.Server.exe`，若最后一条看到类似的JSON-RPC2.0日志即表示启动成功（不同版本可能看到的日志不同，但只要看到`RimSearcher MCP server started`都可视为成功启动）：
-- 首次构建：`Program: Cache unavailable, rebuilding index` -> `Program: Index build completed ...` -> `Program: Index cache saved`
-- 缓存命中：`Program: Index loaded from cache`
-- 服务就绪：`RimSearcher MCP server started`
+从 GitHub Release 自动下载最新版本并替换当前可执行文件。
 
-![启动成功示例](Image/Snipaste_2026-02-27_16-12-43.png)
+### AI 集成（Skill）
 
-快速检查是否接入成功：
-- 客户端工具列表中能看到 `rimworld-searcher__locate`、`rimworld-searcher__inspect` 等 6 个工具。
-- 执行一次 `locate`（例如 `def:Apparel_ShieldBelt`）能返回结果。
+Skill 文件定义标准分析管线，AI 加载后自动按流程定位源码。内置反幻觉规则：
+禁止猜测 API、Harmony Patch 前必须阅读目标方法的 IL。
 
----
+### DataMod — 游戏内导出
 
-## 6. 更新提示说明
+RimSearcher.DataMod 是一个游戏内模组，运行时通过反射扫描 `DefDatabase<T>`，将当前模组环境
+的所有 Def 数据导出为 SQLite 数据库。导出的 `defs.db` 包含完整的 Def 序列化 JSON、字段值表
+和 FTS5 全文索引，供 CLI 查询使用。
 
-- 更新检查为非阻塞后台任务，不影响核心检索服务。
-- 仅在 `CheckUpdates=true` 时启用。
-- 若遇到 GitHub 匿名限流，更新检查会静默失败，不影响工具功能。
-- 更新信息默认通过日志通道输出；若 MCP 客户端不展示日志，则可能看不到该提示。
-- 更新检查缓存文件路径：`<exe目录>/.cache/.update-cache`（与 `index` 文件夹同级）。
 
----
+
+
+## 运行依赖
+
+- [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) — CLI 和 DecompilerServer 的运行环境
+
+## 致谢
+
+- [DecompilerServer](https://github.com/pardeike/DecompilerServer) — 强大的 .NET 反编译 MCP，提供了 C# 源码分析能力
+- [RimWorld](https://rimworldgame.com) — 感谢 Ludeon Studios 创造的精彩游戏和开放的 Mod 生态
 
 ## 免责声明
 
-- 本项目为第三方开源工具，与 Ludeon Studios 及 RimWorld 官方无隶属、赞助或背书关系。
-- 本工具仅对用户本地提供的源码/XML进行索引与检索，不内置或分发任何游戏原始资源。
-- 检索与分析结果仅供学习、调试与研究参考。
-- 使用者应自行确保其数据来源、反编译行为与使用方式符合当地法律法规、RimWorld 相关协议及各 Mod 许可证要求。
-- 因使用本工具造成的任何直接或间接损失，项目作者与贡献者不承担责任。
-
----
+RimSearcher 是 RimWorld Mod 开发的辅助工具，仅读取和分析用户本地已安装的游戏数据。
+不修改、不捆绑、不分发任何 RimWorld 游戏文件。使用者应拥有合法的 RimWorld 副本。
+本项目与 Ludeon Studios 无关联。
 
 ## License
-MIT
 
-> 如果这个项目对你有帮助，欢迎点个 Star⭐。
+MIT
