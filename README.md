@@ -22,7 +22,7 @@ CLI 为其提供全文检索——两者相辅相成，一个负责 C#，一个�
 
 **不会安装？** 将下面这句话发送给你的 AI 助手，它会一步步引导你完成全部安装：
 
-> Read https://raw.githubusercontent.com/kearril/RimSearcher/main/GUIDED_SETUP.md and guide me through the installation.
+> Read https://raw.githubusercontent.com/kearril/RimSearcher/HEAD/GUIDED_SETUP.md and guide me through the installation.
 
 ---
 
