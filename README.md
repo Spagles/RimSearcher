@@ -88,6 +88,7 @@ rimsearcher install
 欢迎将你的 RimWorld Mod 开发经验贡献到 Skill 仓库。如果你有常用的分析流程、常见 Hook 点、
 或特定模组的兼容性经验，可以提交 PR 扩展 Skill 文件，让 AI 助手变得更懂 RimWorld。
 
+> 当前的rimsearcher 专用skills需要持续优化以覆盖更多的开发场景
 
 ## 功能说明
 
