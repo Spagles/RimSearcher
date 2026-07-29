@@ -26,3 +26,4 @@ Thumbs.db
 *.log
 /config.json
 /.omp/
+/ARCHITECTURE.md
