@@ -456,8 +456,9 @@ public static class DefExporter
         }
     }
 
-    private static string EscapeJson(string s)
+    private static string EscapeJson(string? s)
     {
+        if (s == null) return "";
         var sb = new StringBuilder(s.Length + 4);
         foreach (char c in s)
         {

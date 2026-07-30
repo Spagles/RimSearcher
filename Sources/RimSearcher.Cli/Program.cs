@@ -196,8 +196,12 @@ app.Add("get", ([Argument] string defName, string? type = null, bool brief = fal
         {
             foreach (var comp in comps.EnumerateArray())
             {
-                if (comp.TryGetProperty("compClass", out var cc))
-                    compClasses.Add(cc.GetString()!);
+                if (comp.ValueKind == JsonValueKind.Object && comp.TryGetProperty("compClass", out var cc))
+                {
+                    var ccStr = cc.GetString();
+                    if (ccStr != null)
+                        compClasses.Add(ccStr);
+                }
             }
         }
 
