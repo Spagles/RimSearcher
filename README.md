@@ -1,6 +1,8 @@
 # RimSearcher
 
-#### RimSearcher V3 全面焕新重置，工具从该版本开始，推倒了过去的mcp架构，转而使用skills+cli的设计模式，这带来了更好的性能，更低的占用以及更智能的ai决策，重点是现在支持模组环境的代码分析了！
+[![Skills Update Time](https://img.shields.io/github/last-commit/kearril/RimSearcher?path=skills%2Frimsearcher&label=Skills%20Update%20Time&color=4c1)](https://github.com/kearril/RimSearcher/commits/master/skills/rimsearcher)
+
+#### RimSearcher V3 全面焕新重置，工具从该版本开始，舍弃了过去的mcp架构，转而使用skills+cli的设计模式，这带来了更好的性能，更低的占用以及更智能的ai决策，并且现在支持模组环境的代码分析了！
 
 ## 介绍
 
@@ -18,11 +20,11 @@ Skill 文件将两者串联：CLI 定位 Def → 提取 C# 类型名 → Decompi
 和兼容性边界。而 RimSearcher 的 DataMod 在游戏内将当前模组环境的 Def 数据导出为 SQLite 数据库，
 CLI 为其提供全文检索——两者相辅相成，一个负责 C#，一个负责 XML 数据。
 
-## 快速开始
+## 快速开始 
 
 **不会安装？** 将下面这句话发送给你的 AI 助手，它会一步步引导你完成全部安装：
 
-> Read https://raw.githubusercontent.com/kearril/RimSearcher/HEAD/GUIDED_SETUP.md and guide me through the installation.
+> Read https://raw.githubusercontent.com/kearril/RimSearcher/master/GUIDED_SETUP.md and guide me through the installation.
 
 ---
 
@@ -34,11 +36,11 @@ CLI 为其提供全文检索——两者相辅相成，一个负责 C#，一个�
 
 从 [Releases](https://github.com/kearril/RimSearcher/releases/latest) 下载：
 
-| 文件 | 说明                  |
-|---|-----------------------|
-| `rimsearcher.exe` | CLI 命令行工具        |
-| `RimSearcher_DataMod.zip` | 游戏内def数据导出模组 |
-| `skills.zip` | AI 助手技能文件（解压后使用） |
+| 文件 | 说明                                                                                                                                                                                                                                                          |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `rimsearcher.exe` | CLI 命令行工具                                                                                                                                                                                                                                                |
+| `RimSearcher_DataMod.zip` | 游戏内def数据导出模组                                                                                                                                                                                                                                         |
+| `skills.zip` | AI 助手技能文件（解压后使用）。Releases 的skills文件仅在`rimsearcher.exe`和`RimSearcher_DataMod.zip`发布新版本时才发行，具有滞后性，推荐直接点击 [download](https://raw.githubusercontent.com/kearril/RimSearcher/master/skills.zip) 下载仓库最新版skills文件 |
 
 还需要反编译 MCP：[DecompilerServer](https://github.com/pardeike/DecompilerServer) — 前往官网下载并配置该mcp工具。
 
@@ -68,14 +70,26 @@ rimsearcher install
 
 ### 5. 配置 AI 技能
 
-解压 `skills.zip`，将 `skills/rimsearcher/` 放入 你使用的ai助手的 skills 目录，
-
+解压 `skills.zip`（推荐从 [raw URL](https://raw.githubusercontent.com/kearril/RimSearcher/master/skills.zip) 直接下载，无需等 Release），将 `skills/rimsearcher/` 放入你使用的 AI 助手的 skills 目录。
 重启 AI 客户端后生效。
+
+### 6.完成
+重启后，可以开始进行测试和使用了
 
 ---
 
-## 组件
+## 更新说明
 
+| 组件 | 更新方式                                                                                                                                                                            |
+|---|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **rimsearcher CLI** | 当Release发行可用更新时，终端执行 `rimsearcher update`，自动从 GitHub Release 下载最新版替换当前 exe                                                                                |
+| **rimsearcher Skill** | 直接点击 [download skills.zip](https://raw.githubusercontent.com/kearril/RimSearcher/master/skills.zip)，解压覆盖 skills 目录。无需等 Release发行新版，每次 commit push 即获取最新 |
+| **RimSearcher.DataMod** | 从 [Releases](https://github.com/kearril/RimSearcher/releases/latest) 下载新版 `RimSearcher_DataMod.zip`，解压覆盖 Mods 目录即可                                                    |
+
+> 由于 skills 文件是影响ai决策的重要文件，可能频繁更新优化，而它的更新不会影响 CLI 和 datamod 的功能，
+> 因此 skills 不会一有更新就发布 Release。如何判断 skills 是否有更新？看这个标徽或者页面顶部的 ![Skills Update Time](https://img.shields.io/github/last-commit/kearril/RimSearcher?path=skills%2Frimsearcher&label=Skills%20Update%20Time&color=4c1) 徽章，显示的日期比本地文件新就说明有更新。
+
+## 组件
 
 | 组件 | 说明                                                                                                                             |
 |---|----------------------------------------------------------------------------------------------------------------------------------|
@@ -83,7 +97,26 @@ rimsearcher install
 | **rimsearcher CLI** | .NET 命令行工具。10 个命令：`search` `list` `get` `find` `fields` `values` `types` `mods` `install` `update`                     |
 | **rimsearcher Skill** | AI 助手技能文件。教 AI 使用 CLI + 反编译 MCP 定位和分析 RimWorld 源码，含反幻觉规则                                              |
 
+## 构建
+
+### 环境
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+
+### 编译
+
+```bash
+# CLI 工具
+dotnet publish Sources/RimSearcher.Cli/ -c Release -o Sources/RimSearcher.Cli/publish/
+# 产物: Sources/RimSearcher.Cli/publish/rimsearcher.exe
+
+# DataMod 模组
+dotnet build Sources/RimSearcher.DataMod/ -c Release
+# 产物: RimSearcher_DataMod/Assemblies/RimSearcher.DataMod.dll
+```
+
 ## 贡献 Skill
+
 
 欢迎将你的 RimWorld Mod 开发经验贡献到 Skill 仓库。如果你有常用的分析流程、常见 Hook 点、
 或特定模组的兼容性经验，可以提交 PR 扩展 Skill 文件，让 AI 助手变得更懂 RimWorld。
@@ -188,6 +221,7 @@ RimSearcher.DataMod 是一个游戏内模组，运行时通过反射扫描 `DefD
 ## 运行依赖
 
 - [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) — CLI 和 DecompilerServer 的运行环境
+- [DecompilerServer](https://github.com/pardeike/DecompilerServer) — 反编译 MCP 服务，C# 源码分析必需
 
 ## 致谢
 
