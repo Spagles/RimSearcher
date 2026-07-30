@@ -1,6 +1,6 @@
 ---
 name: rimsearcher
-description: Use when the user asks to "find a Def", "search RimWorld data", "look up a game mechanic", "check a comp class", "reverse lookup which Defs use a C# class", "read RimWorld source code", or discusses RimWorld mod development, Harmony patches, XML defs, or C# types in the RimWorld codebase. Requires the rimsearcher CLI and a DecompilerServer MCP connection.
+description: Use for RimWorld mod development, including Def and XML analysis, C# type and source investigation, Harmony patching, API migration, mod compatibility, and gameplay-mechanic research. Use rimsearcher for Def data and DecompilerServer for real game or mod assembly evidence when relevant.
 ---
 
 # RimSearcher
@@ -25,9 +25,9 @@ mods                      ← mod stats
 
 These are the CLI behaviors that guessing wrong wastes turns.
 
-### search — prefix wildcard is mandatory
-FTS5 token matching, **not** SQL LIKE. `shield` matches only the standalone token `shield` — it will not match `ShieldBelt` (one token). Always add `*`: `shield*`.
-CJK is auto-bigram: `护盾` already matches `护盾腰带`, no wildcard needed.
+### search — use a prefix wildcard for Latin terms
+FTS5 token matching, **not** SQL LIKE. `shield` matches only the standalone token `shield` — it will not match `ShieldBelt` (one token). For Latin/alphanumeric prefix searches, add `*`: `shield*`.
+CJK is auto-bigram: `护盾` already matches `护盾腰带`, so use CJK terms as-is.
 
 ### find — value is exact match
 `find <path> <value>` uses `=` equality. `find compClass Shield` matches nothing; you need the full name: `find compClass RimWorld.CompShield`. For partial names, use `search`.
@@ -37,7 +37,7 @@ A defName can exist in multiple def_types (e.g. `Human` is in BodyDef, ThingDef,
 `--brief` returns `{thing_class, comp_classes[]}` — feed those field names directly to the decompiler.
 
 ### output format
-All commands: JSON to stdout, errors/hints to stderr.
+Data-query commands write JSON to stdout; errors and hints go to stderr.
 
 ## Pipeline
 
@@ -51,15 +51,16 @@ User knows the defName or wants to browse/enumerate. No search needed.
 ### Full Analysis *(default)*
 User wants to understand a game mechanic end-to-end.
 
-1. `search "keyword*" --type T`          ← always prefix-wildcard
+1. `search "<query>" --type T`          ← Latin/alphanumeric prefix: append `*`; CJK: use as-is
+   If several Defs match, continue only when `def_type`, `label`, and `mod_name` identify the intended Def; otherwise present concise candidates and ask which Def to inspect.
 2. `get <name> --type T --brief`          ← extracts `thing_class`, `comp_classes[]`
-   If `comp_classes` is empty (StatDef, JobDef, HediffDef, etc.):
-   use `fields <name> --type <T>` and grep for `*Class`, `workerClass`, `hediffClass`, `driverClass`.
+   Decompile every non-null `thing_class` and each `comp_classes` entry.
+   If neither yields the behavior in question, use `fields <name> --type <T>` and inspect every `field_path` / `field_value` pair for fully-qualified C# type names. Paths ending in `Class` are common clues, including `workerClass`, `hediffClass`, and `driverClass`, but are not an exhaustive list.
 3. Decompiler:
    `list_contexts` → `select_context` or ask user for paths
-   `load_assembly(path, contextAlias)` — auto-name from file
-   `search_symbols(query="<thing_class>")` → `get_decompiled_source(memberId)`
-4. After source: read `references/decompiler-mcp.md`
+   `load_assembly(assemblyPath="<path>", contextAlias="<alias>")` — only for a new assembly path
+   For each selected C# type, use `resolve_member_id` when its name is fully qualified; otherwise use `search_symbols`. Then call `get_decompiled_source` with the resolved `memberId`.
+4. Read `references/decompiler-mcp.md` only for context loading, recovery, inheritance/call-graph analysis, IL/transpiler work, or version comparison.
 5. Verify
 
 ### Reverse Lookup
@@ -67,7 +68,7 @@ User asks "which Defs use this C# class?"
 
 1. `find <fieldPath> <fullClassName>`    ← value is exact match
 2. Optional: `get --brief` on key results → decompiler
-   → After source: read `references/decompiler-mcp.md`
+   → Read `references/decompiler-mcp.md` only for context loading, recovery, inheritance/call-graph analysis, IL/transpiler work, or version comparison.
 3. Verify
 
 ### Direct Source
@@ -75,21 +76,21 @@ User names a C# type directly. Skip CLI.
 
 1. Decompiler:
    `list_contexts` → `select_context` or ask user for paths
-   `load_assembly(path, contextAlias)`
-   `search_symbols(query="<ClassName>")` → `get_decompiled_source(memberId)`
-2. After source: read `references/decompiler-mcp.md`
+   `load_assembly(assemblyPath="<path>", contextAlias="<alias>")` — only for a new assembly path
+   For a fully-qualified type or member name, use `resolve_member_id`; otherwise use `search_symbols(query="<ClassName>")`.
+2. Read `references/decompiler-mcp.md` only for context loading, recovery, inheritance/call-graph analysis, IL/transpiler work, or version comparison.
 
 ## Verify
 
-`types`, `mods`, `values`, `install`: skip this step.
-All other commands: read `references/cli-reference.md` to confirm output fields, parameter defaults, and edge-case behaviors.
+`types`, `mods`, `values`: skip this step.
+Read `references/cli-reference.md` only when command parameters, output fields, FTS syntax, pagination/filtering, database schema, or an unexpected CLI result matters.
 
 ## Guardrails
 
 **NEVER:**
 - Guess field names — run `get --brief` or `fields` first.
 - Invent method signatures — read decompiled source before patching.
-- Assume 1.5 APIs work in 1.6 — verify with `compare_symbols(compareMode:"body")`.
+- Assume 1.5 APIs work in 1.6 — for method behavior, compare the two context aliases with `compare_symbols(..., compareMode:"body")` as described in `references/decompiler-mcp.md`.
 - Write a Harmony patch without reading IL — run `get_il` first.
 - Fabricate XML — inspect full `get` output, not `--brief`.
 - Fall back to shell tools while the DecompilerServer MCP is connected.

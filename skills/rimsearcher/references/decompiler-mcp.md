@@ -29,19 +29,19 @@ get_decompiled_source(memberId="<id-from-search>")
 ## Inheritance + Call Graph
 
 ```
-find_base_types(memberId="<type-id>")
-find_derived_types(memberId="<type-id>")
-find_callers(memberId="<method-id>")
-find_callees(memberId="<method-id>")
+find_base_types(typeId="<type-id>")
+find_derived_types(baseTypeId="<type-id>")
+find_callers(methodId="<method-id>")
+find_callees(methodId="<method-id>")
 get_il(memberId="<method-id>")       # before writing transpilers
 ```
 
 ## Version Comparison
 
 ```
-compare_contexts()                         # structural overview across loaded aliases
-compare_symbols(memberId="...", ...)       # type/member drill-down
-compare_symbols(memberId="...", compareMode="body")  # method body diff (1.5→1.6 porting)
+compare_contexts(leftContextAlias="rw15", rightContextAlias="rw16")
+compare_symbols(leftContextAlias="rw15", rightContextAlias="rw16", symbol="Verse.Pawn:Kill", symbolKind="method")
+compare_symbols(leftContextAlias="rw15", rightContextAlias="rw16", symbol="Verse.Pawn:Kill", symbolKind="method", compareMode="body")  # method body diff
 ```
 
 ## Recovery
@@ -49,6 +49,7 @@ compare_symbols(memberId="...", compareMode="body")  # method body diff (1.5→1
 If DecompilerServer returns an error with candidates, follow the suggestion rather than retrying:
 - `type_not_found` → `search_types` or `search_symbols`
 - `member_not_found` → inspect `error.details.candidates`, then `list_members`
+- `member_guess_unresolved` → the type resolved but the member did not; inspect returned direct members or call `list_members`.
 - `wrong_symbol_kind` → switch to the tool for the actual kind
 
 For the complete tool reference and edge-case handling, consult the official skill:

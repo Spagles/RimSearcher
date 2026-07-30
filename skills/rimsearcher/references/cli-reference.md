@@ -2,8 +2,7 @@
 
 Full parameter defaults, SQL schema details, and edge-case behaviors. Load this only when you need internals beyond the [SKILL.md](../SKILL.md) summaries — everyday queries are covered there.
 
-All commands output JSON to stdout and errors/hints to stderr. The database (`defs.db`) must be in
-the same directory as `rimsearcher.exe`.
+Data-query commands output JSON to stdout; errors and hints go to stderr. The database (`defs.db`) must be in the same directory as `rimsearcher.exe`.
 
 ---
 
@@ -37,7 +36,7 @@ rimsearcher search <keyword> [--type T] [--mod M] [--limit N] [--count]
 | `--limit` | 20 | Max results |
 | `--count` | false | Return `{"count": N}` instead of result array |
 
-**Output** (default): Array of `{def_name, def_type, label, mod_name, package_id, rank}`, sorted by rank descending.
+**Output** (default): Array of `{def_name, def_type, label, mod_name, package_id, rank}`, sorted by FTS5 rank ascending (lower rank is more relevant).
 
 **Output** (--count): `{"count": N}`
 
@@ -235,31 +234,6 @@ No parameters.
 **Output**: Array of `{mod_name, package_id?, def_count}`, sorted by def_count descending.
 
 Dynamic/abstract Defs appear as `mod_name: "Unknown"` with `package_id: null`.
-
----
-
-## install
-
-Add the directory containing `rimsearcher.exe` to the user PATH (Windows).
-
-```
-rimsearcher install
-```
-
-No parameters. Idempotent — running it again when already in PATH does nothing.
-
----
-
-## update
-
-Download the latest release from GitHub and replace the current executable.
-
-```
-rimsearcher update
-```
-
-No parameters. Uses HTTP 302 redirects to resolve the latest version tag (no GitHub API rate limit).
-Self-replacing: downloads `rimsearcher.new`, verifies, replaces the running exe, cleans up.
 
 
 ## See Also
