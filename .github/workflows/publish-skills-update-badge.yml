@@ -1,0 +1,50 @@
+name: Publish Skills Update Badge
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "skills/**"
+      - ".github/workflows/publish-skills-update-badge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: skills-update-badge
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build badge endpoint
+        shell: bash
+        run: |
+          mkdir public
+          timestamp="$(git log -1 --format=%cI -- skills)"
+          formatted_timestamp="$(date --utc --date="$timestamp" '+%Y-%m-%d %H:%M UTC')"
+          jq -n \
+            --arg message "$formatted_timestamp" \
+            '{schemaVersion: 1, label: "Skills Update Time", message: $message, color: "4c1", cacheSeconds: 300}' \
+            > public/skills-update.json
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy GitHub Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
