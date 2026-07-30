@@ -14,7 +14,7 @@ Determine where to place Skill files and how to configure MCP based on your runt
 
 ## Goals
 
-1. Download RimSearcher release files
+1. Download RimSearcher components
 2. Download and configure DecompilerServer MCP
 3. Install DataMod into RimWorld
 4. Configure rimsearcher CLI
@@ -28,22 +28,22 @@ Determine where to place Skill files and how to configure MCP based on your runt
 
 ```
 Where is RimWorld installed?
-Steam default: D:\SteamLibrary\steamapps\common\RimWorld
+(Steam: right-click RimWorld in Library → Manage → Browse local files)
 ```
 
-You need this path to install the DataMod and configure DecompilerServer.
+You need this path to install the DataMod.
 
 ### Step 2: Download Files
 
-**RimSearcher:** Download from `https://github.com/kearril/RimSearcher/releases/latest`:
+**RimSearcher CLI & DataMod:** Download from `https://github.com/kearril/RimSearcher/releases/latest`:
 - `rimsearcher.exe`
 - `RimSearcher_DataMod.zip`
-- `skills.zip`
 
-Create a `~/rimsearcher/` directory and place `rimsearcher.exe` inside. Extract `skills.zip` for later use.
+Create a directory and place `rimsearcher.exe` inside.
 
-**DecompilerServer:** Download and install from `https://github.com/pardeike/DecompilerServer`.
-Handle MCP configuration on your own based on your runtime environment. 
+**Skills:** Download from `https://raw.githubusercontent.com/kearril/RimSearcher/master/skills.zip` for the latest version without waiting for a Release. Extract `skills/rimsearcher/` for later use.
+
+**DecompilerServer:** Visit `https://github.com/pardeike/DecompilerServer` and follow the repository's installation instructions to set up the MCP server.
 
 ### Step 3: Install DataMod
 
@@ -82,7 +82,7 @@ Guide the user through the in-game steps:
 rimsearcher types
 ```
 
-Should output a list of Def types. Then test in conversation that DecompilerServer can load the game assembly.
+Should output a list of Def types. Then use the DecompilerServer MCP to load the game assembly and verify it can read source code.
 
 ### Done
 
