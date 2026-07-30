@@ -1,6 +1,6 @@
 # RimSearcher
 
-[![Skills Update Time](https://img.shields.io/github/last-commit/kearril/RimSearcher?path=skills%2Frimsearcher&label=Skills%20Update%20Time&color=4c1)](https://github.com/kearril/RimSearcher/commits/master/skills/rimsearcher)
+[![Skills Update Time](https://img.shields.io/endpoint?url=https%3A%2F%2Fkearril.github.io%2FRimSearcher%2Fskills-update.json&cacheSeconds=300)](https://github.com/kearril/RimSearcher/commits/master/skills)
 
 #### RimSearcher V3 全面焕新重置，工具从该版本开始，舍弃了过去的mcp架构，转而使用skills+cli的设计模式，这带来了更好的性能，更低的占用以及更智能的ai决策，并且现在支持模组环境的代码分析了！
 
@@ -87,7 +87,7 @@ rimsearcher install
 | **RimSearcher.DataMod** | 从 [Releases](https://github.com/kearril/RimSearcher/releases/latest) 下载新版 `RimSearcher_DataMod.zip`，解压覆盖 Mods 目录即可                                                    |
 
 > 由于 skills 文件是影响ai决策的重要文件，可能频繁更新优化，而它的更新不会影响 CLI 和 datamod 的功能，
-> 因此 skills 不会一有更新就发布 Release。如何判断 skills 是否有更新？看这个标徽或者页面顶部的 ![Skills Update Time](https://img.shields.io/github/last-commit/kearril/RimSearcher?path=skills%2Frimsearcher&label=Skills%20Update%20Time&color=4c1) 徽章，显示的日期比本地文件新就说明有更新。
+> 因此 skills 不会一有更新就发布 Release。如何判断 skills 是否有更新？看这个标徽或者页面顶部的 [Skills Update Time](https://github.com/kearril/RimSearcher/commits/master/skills) 徽章；它显示整个 `skills/` 目录最后一次更新的 UTC 时间。显示的时间比本地文件新就说明有更新。
 
 ## 组件
 
