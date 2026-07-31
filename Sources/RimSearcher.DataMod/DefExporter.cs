@@ -1,26 +1,15 @@
-using System.Collections.Concurrent;
 using System.Data.SQLite;
-using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
+using RimSearcher.DataMod.Reflection;
+using RimSearcher.DataMod.Search;
 using Verse;
 
 namespace RimSearcher.DataMod;
 
 public static class DefExporter
 {
-    private static readonly ConcurrentDictionary<Type, FieldInfo[]> FieldCache = new();
-
-    private static readonly HashSet<string> ExcludedNamespaces = new()
-    {
-        "UnityEngine",
-        "UnityEditor",
-        "Microsoft.",
-        "Mono."
-    };
 
     private const int MaxFieldDepth = 3;
-    private const int MaxJsonDepth = 10;
     private const int BatchSize = 500;
     private const int MaxFieldValuesPerDef = 5000;
 
@@ -31,9 +20,6 @@ public static class DefExporter
         "index", "shortHash"
     };
 
-    private static FieldInfo[] GetCachedFields(Type type) =>
-        FieldCache.GetOrAdd(type, static currentType =>
-            currentType.GetFields(BindingFlags.Public | BindingFlags.Instance));
 
     private static readonly HashSet<string> SkipFieldPrefixes = new()
     {
@@ -127,7 +113,7 @@ public static class DefExporter
                     string json;
                     try
                     {
-                        json = SerializeToJson(def);
+                        json = DefJsonSerializer.Serialize(def);
                     }
                     catch (Exception ex)
                     {
@@ -160,7 +146,7 @@ public static class DefExporter
                     // Build FTS text and insert into FTS5 index
                     var fieldTexts = new List<string>();
                     ExtractFieldValues(def, defId, fieldValueInserts, fieldTexts);
-                    var ftsText = BuildSearchText(def.defName, label, description, fieldTexts);
+                    var ftsText = SearchTextBuilder.Build(def.defName, label, description, fieldTexts);
 
                     pFtsRowid.Value = defId;
                     pFtsDn.Value = def.defName ?? "";
@@ -303,203 +289,7 @@ public static class DefExporter
         inserts.Clear();
     }
 
-    private static string BuildSearchText(string? defName, string? label, string? description, List<string> fieldTexts)
-    {
-        var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(defName)) sb.Append(defName).Append(' ');
-        if (!string.IsNullOrWhiteSpace(label)) sb.Append(label).Append(' ');
-        if (!string.IsNullOrWhiteSpace(description)) sb.Append(description).Append(' ');
-        foreach (var t in fieldTexts)
-        {
-            sb.Append(t).Append(' ');
-        }
-        var text = sb.ToString().Trim();
-        return ExpandCjkBigrams(text);
-    }
 
-    private static string ExpandCjkBigrams(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return text;
-
-        var result = new StringBuilder(text);
-        int runStart = -1;
-
-        for (int i = 0; i <= text.Length; i++)
-        {
-            bool isCjk = i < text.Length && IsCjkChar(text[i]);
-
-            if (isCjk)
-            {
-                if (runStart < 0) runStart = i;
-            }
-            else
-            {
-                if (runStart >= 0)
-                {
-                    int runLen = i - runStart;
-                    if (runLen >= 2)
-                    {
-                        result.Append(' ');
-                        for (int j = runStart; j < i - 1; j++)
-                        {
-                            result.Append(text[j]);
-                            result.Append(text[j + 1]);
-                            result.Append(' ');
-                        }
-                    }
-                    runStart = -1;
-                }
-            }
-        }
-
-        return result.ToString();
-    }
-
-    private static bool IsCjkChar(char c)
-    {
-        return (c >= 0x4E00 && c <= 0x9FFF)    // CJK Unified Ideographs
-            || (c >= 0x3400 && c <= 0x4DBF)    // CJK Extension A
-            || (c >= 0x20000 && c <= 0x2A6DF); // CJK Extension B (surrogate pairs, handled as two chars)
-    }
-
-    #region JSON Serialization
-
-    private static string SerializeToJson(Def def)
-    {
-        var sb = new StringBuilder();
-        var visited = new HashSet<object>();
-        SerializeValue(def, sb, visited, 0);
-        return sb.ToString();
-    }
-
-    private static void SerializeValue(object? value, StringBuilder sb, HashSet<object> visited, int depth)
-    {
-        if (value == null) { sb.Append("null"); return; }
-        if (depth > MaxJsonDepth) { sb.Append("\"...\""); return; }
-
-        Type t = value.GetType();
-
-        // Primitives
-        if (value is string s) { sb.Append('"'); sb.Append(EscapeJson(s)); sb.Append('"'); return; }
-        if (value is bool b) { sb.Append(b ? "true" : "false"); return; }
-        if (value is int or long or short or byte or sbyte or uint or ulong or ushort) { sb.Append(value.ToString()); return; }
-        if (value is float f) { sb.Append(f.ToString("G", System.Globalization.CultureInfo.InvariantCulture)); return; }
-        if (value is double d) { sb.Append(d.ToString("G", System.Globalization.CultureInfo.InvariantCulture)); return; }
-        if (value is decimal dec) { sb.Append(dec.ToString("G", System.Globalization.CultureInfo.InvariantCulture)); return; }
-        if (t.IsEnum) { sb.Append('"'); sb.Append(EscapeJson(value.ToString()!)); sb.Append('"'); return; }
-
-        // Cycle detection
-        if (!t.IsValueType)
-        {
-            if (visited.Contains(value)) { sb.Append("\"$cyclic_ref\""); return; }
-            visited.Add(value);
-        }
-
-        try
-        {
-            // Nested Def references — defName only (top-level Def at depth 0 is fully serialized)
-            if (depth > 0 && value is Def defRef)
-            {
-                sb.Append('"'); sb.Append(EscapeJson(defRef.defName)); sb.Append('"');
-                return;
-            }
-
-            // Collections (IList covers List<T>, arrays, etc.) — BEFORE namespace check
-            if (value is System.Collections.IList list)
-            {
-                sb.Append('[');
-                for (int i = 0; i < list.Count; i++)
-                {
-                    if (i > 0) sb.Append(',');
-                    SerializeValue(list[i], sb, visited, depth + 1);
-                }
-                sb.Append(']');
-                return;
-            }
-
-            // Dictionaries — BEFORE namespace check
-            if (value is System.Collections.IDictionary dict)
-            {
-                sb.Append('{');
-                bool first = true;
-                foreach (System.Collections.DictionaryEntry entry in dict)
-                {
-                    if (!first) sb.Append(',');
-                    first = false;
-                    SerializeValue(entry.Key, sb, visited, depth + 1);
-                    sb.Append(':');
-                    SerializeValue(entry.Value, sb, visited, depth + 1);
-                }
-                sb.Append('}');
-                return;
-            }
-
-            // Type references — output FullName (must come before namespace exclusion)
-            if (value is Type typeVal)
-            {
-                sb.Append('"'); sb.Append(EscapeJson(typeVal.FullName ?? typeVal.Name)); sb.Append('"');
-                return;
-            }
-
-            // Skip excluded namespaces for general objects (AFTER IList/IDict/Type checks)
-            string? ns = t.Namespace;
-            if (ns != null)
-            {
-                foreach (var excluded in ExcludedNamespaces)
-                {
-                    if (ns.StartsWith(excluded, StringComparison.Ordinal)) { sb.Append("{}"); return; }
-                }
-            }
-
-            // General objects: serialize public instance fields
-            sb.Append('{');
-            var fields = GetCachedFields(t);
-            bool firstField = true;
-            foreach (var field in fields)
-            {
-                if (field.Name.StartsWith("<", StringComparison.Ordinal)) continue;
-                if (!firstField) sb.Append(',');
-                firstField = false;
-                sb.Append('"'); sb.Append(EscapeJson(field.Name)); sb.Append('"'); sb.Append(':');
-                try
-                {
-                    SerializeValue(field.GetValue(value), sb, visited, depth + 1);
-                }
-                catch { sb.Append("null"); }
-            }
-            sb.Append('}');
-        }
-        finally
-        {
-            if (!t.IsValueType) visited.Remove(value);
-        }
-    }
-
-    private static string EscapeJson(string? s)
-    {
-        if (s == null) return "";
-        var sb = new StringBuilder(s.Length + 4);
-        foreach (char c in s)
-        {
-            switch (c)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
-                case '\b': sb.Append("\\b"); break;
-                case '\f': sb.Append("\\f"); break;
-                default:
-                    if (c < 0x20) sb.Append($"\\u{(int)c:X4}");
-                    else sb.Append(c);
-                    break;
-            }
-        }
-        return sb.ToString();
-    }
-
-    #endregion
 
     #region Field Values Extraction
 
@@ -589,14 +379,12 @@ public static class DefExporter
             string? ns = t.Namespace;
             if (ns != null)
             {
-                foreach (var excluded in ExcludedNamespaces)
-                {
-                    if (ns.StartsWith(excluded, StringComparison.Ordinal)) return;
-                }
+                if (ReflectionTraversalPolicy.IsExcludedNamespace(t))
+                    return;
             }
 
             // General object: iterate public instance fields
-            var fields = GetCachedFields(t);
+            var fields = PublicFieldCache.Get(t);
             foreach (var field in fields)
             {
                 if (count >= MaxFieldValuesPerDef) return;
