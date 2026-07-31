@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using ConsoleAppFramework;
 using Microsoft.Data.Sqlite;
+using RimSearcher.Cli.Infrastructure;
+using RimSearcher.Cli.Models;
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -13,28 +13,13 @@ const string LatestReleaseUrl = "https://github.com/kearril/RimSearcher/releases
 const string ReleaseDownloadUrl = "https://github.com/kearril/RimSearcher/releases/download";
 
 string dbPath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "defs.db");
-var jsonOptions = new JsonSerializerOptions
-{
-    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    WriteIndented = true,
-    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-};
 
-SqliteConnection OpenDb()
-{
-    if (!File.Exists(dbPath))
-    {
-        Console.Error.WriteLine($"Error: {dbPath} not found");
-        Environment.Exit(1);
-    }
+var connectionFactory = new DatabaseConnectionFactory(dbPath);
+var jsonOutput = new JsonOutput();
 
-    var connection = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-    connection.Open();
-    return connection;
-}
+SqliteConnection OpenDb() => connectionFactory.Open();
 
-void WriteJson(object value) => Console.WriteLine(JsonSerializer.Serialize(value, jsonOptions));
+void WriteJson(object value) => jsonOutput.Write(value);
 
 static string ReadLabel(SqliteDataReader reader, int nameOrdinal, int labelOrdinal) =>
     reader.IsDBNull(labelOrdinal) ? reader.GetString(nameOrdinal) : reader.GetString(labelOrdinal);
@@ -106,19 +91,17 @@ app.Add("search", ([Argument] string keyword, string? type = null, string? mod =
     AddFilterParams(cmd, type, mod);
     cmd.Parameters.AddWithValue("@limit", limit);
 
-    var results = new List<object>();
+    var results = new List<SearchResult>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
-        results.Add(new
-        {
-            def_name = reader.GetString(0),
-            def_type = reader.GetString(1),
-            label = ReadLabel(reader, 0, 2),
-            mod_name = reader.GetString(3),
-            package_id = ReadOptionalString(reader, 4),
-            rank = reader.GetDouble(5)
-        });
+        results.Add(new SearchResult(
+            reader.GetString(0),
+            reader.GetString(1),
+            ReadLabel(reader, 0, 2),
+            reader.GetString(3),
+            ReadOptionalString(reader, 4),
+            reader.GetDouble(5)));
     }
     WriteJson(results);
 });
@@ -139,18 +122,16 @@ app.Add("list", (string? type = null, string? mod = null, int limit = 20, int of
     cmd.Parameters.AddWithValue("@limit", limit);
     cmd.Parameters.AddWithValue("@offset", offset);
 
-    var results = new List<object>();
+    var results = new List<DefSummary>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
-        results.Add(new
-        {
-            def_name = reader.GetString(0),
-            def_type = reader.GetString(1),
-            label = ReadLabel(reader, 0, 2),
-            mod_name = reader.GetString(3),
-            package_id = ReadOptionalString(reader, 4)
-        });
+        results.Add(new DefSummary(
+            reader.GetString(0),
+            reader.GetString(1),
+            ReadLabel(reader, 0, 2),
+            reader.GetString(3),
+            ReadOptionalString(reader, 4)));
     }
     WriteJson(results);
 });
@@ -218,16 +199,14 @@ app.Add("get", ([Argument] string defName, string? type = null, bool brief = fal
             }
         }
 
-        WriteJson(new
-        {
-            def_name = reader.GetString(0),
-            def_type = reader.GetString(1),
-            label = ReadLabel(reader, 0, 2),
-            mod_name = reader.GetString(3),
-            package_id = ReadOptionalString(reader, 4),
-            thing_class = thingClass,
-            comp_classes = compClasses
-        });
+        WriteJson(new BriefDef(
+            reader.GetString(0),
+            reader.GetString(1),
+            ReadLabel(reader, 0, 2),
+            reader.GetString(3),
+            ReadOptionalString(reader, 4),
+            thingClass,
+            compClasses));
         return;
     }
 
@@ -265,20 +244,18 @@ app.Add("find", ([Argument] string fieldPath, [Argument] string value, string? t
     AddFilterParams(cmd, type, mod);
     cmd.Parameters.AddWithValue("@limit", limit);
 
-    var results = new List<object>();
+    var results = new List<FieldMatch>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
-        results.Add(new
-        {
-            def_name = reader.GetString(0),
-            def_type = reader.GetString(1),
-            label = ReadLabel(reader, 0, 2),
-            mod_name = reader.GetString(3),
-            package_id = ReadOptionalString(reader, 4),
-            field_path = reader.GetString(5),
-            field_value = reader.GetString(6)
-        });
+        results.Add(new FieldMatch(
+            reader.GetString(0),
+            reader.GetString(1),
+            ReadLabel(reader, 0, 2),
+            reader.GetString(3),
+            ReadOptionalString(reader, 4),
+            reader.GetString(5),
+            reader.GetString(6)));
     }
     WriteJson(results);
     if (results.Count == 0)
@@ -302,18 +279,14 @@ app.Add("fields", ([Argument] string defName, string type, int limit = 1000) =>
     cmd.Parameters.AddWithValue("@type", type);
     cmd.Parameters.AddWithValue("@limit", sqlLimit);
 
-    var results = new List<object>();
+    var results = new List<FieldValue>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
         if (results.Count >= limit) break;
         var path = reader.GetString(0);
         if (IsNoiseField(path)) continue;
-        results.Add(new
-        {
-            field_path = path,
-            field_value = reader.GetString(1)
-        });
+        results.Add(new FieldValue(path, reader.GetString(1)));
     }
     WriteJson(results);
 });
@@ -345,15 +318,11 @@ app.Add("types", () =>
     using var cmd = db.CreateCommand();
     cmd.CommandText = "SELECT def_type, COUNT(*) FROM defs GROUP BY 1 ORDER BY 2 DESC";
 
-    var results = new List<object>();
+    var results = new List<TypeCount>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
-        results.Add(new
-        {
-            def_type = reader.GetString(0),
-            count = reader.GetInt32(1)
-        });
+        results.Add(new TypeCount(reader.GetString(0), reader.GetInt32(1)));
     }
     WriteJson(results);
 });
@@ -364,16 +333,14 @@ app.Add("mods", () =>
     using var cmd = db.CreateCommand();
     cmd.CommandText = "SELECT mod_name, package_id, COUNT(*) FROM defs GROUP BY 1, 2 ORDER BY 3 DESC";
 
-    var results = new List<object>();
+    var results = new List<ModCount>();
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
     {
-        results.Add(new
-        {
-            mod_name = reader.GetString(0),
-            package_id = reader.IsDBNull(1) ? null : reader.GetString(1),
-            def_count = reader.GetInt32(2)
-        });
+        results.Add(new ModCount(
+            reader.GetString(0),
+            ReadOptionalString(reader, 1),
+            reader.GetInt32(2)));
     }
     WriteJson(results);
 });
