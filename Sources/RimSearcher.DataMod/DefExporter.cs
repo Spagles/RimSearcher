@@ -1,12 +1,11 @@
+using System.Collections.Concurrent;
 using System.Data.SQLite;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using Verse;
 
 namespace RimSearcher.DataMod;
-using System.Collections.Concurrent;
-
-using System.Runtime.InteropServices;
 
 public static class DefExporter
 {
@@ -23,7 +22,6 @@ public static class DefExporter
     private const int MaxFieldDepth = 3;
     private const int MaxJsonDepth = 10;
     private const int BatchSize = 500;
-
     private const int MaxFieldValuesPerDef = 5000;
 
     private static readonly HashSet<string> SkipFieldNames = new()
@@ -33,8 +31,9 @@ public static class DefExporter
         "index", "shortHash"
     };
 
-    private static FieldInfo[] GetCachedFields(Type t) =>
-        FieldCache.GetOrAdd(t, t => t.GetFields(BindingFlags.Public | BindingFlags.Instance));
+    private static FieldInfo[] GetCachedFields(Type type) =>
+        FieldCache.GetOrAdd(type, static currentType =>
+            currentType.GetFields(BindingFlags.Public | BindingFlags.Instance));
 
     private static readonly HashSet<string> SkipFieldPrefixes = new()
     {
@@ -44,6 +43,9 @@ public static class DefExporter
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibrary(string lpFileName);
 
+    /// <summary>
+    /// Exports every currently loaded RimWorld definition to a searchable SQLite database.
+    /// </summary>
     public static void Export(string dbPath, Action<string>? log = null, Action<int, int, string>? progress = null)
     {
         void Log(string msg) => log?.Invoke(msg);
@@ -59,30 +61,8 @@ public static class DefExporter
         var connStr = $"Data Source={dbPath};Version=3;";
         using var conn = new SQLiteConnection(connStr);
         conn.Open();
-        conn.EnableExtensions(true);
-        var arch = IntPtr.Size == 8 ? "x64" : "x86";
-        var interopPath = Path.Combine(Path.GetDirectoryName(typeof(DefExporter).Assembly.Location)!, arch, "SQLite.Interop.dll");
-        Log($"尝试加载 FTS5 扩展: {interopPath} (exists={File.Exists(interopPath)})");
-
-        // Pre-load the interop DLL so sqlite3_load_extension finds it already loaded
-        var handle = LoadLibrary(interopPath);
-        Log($"预加载结果: 0x{handle.ToInt64():X}");
-
-        conn.LoadExtension(interopPath, "sqlite3_fts5_init");
-        Log("已加载 FTS5 扩展");
-
-        using (var pragmaCmd = conn.CreateCommand())
-        {
-            pragmaCmd.CommandText = @"
-                PRAGMA journal_mode=OFF;
-                PRAGMA synchronous=OFF;
-                PRAGMA cache_size=-20000;
-                PRAGMA mmap_size=268435456;
-                PRAGMA temp_store=MEMORY;
-                PRAGMA page_size=8192;
-            ";
-            pragmaCmd.ExecuteNonQuery();
-        }
+        LoadFtsExtension(conn, Log);
+        ConfigureConnection(conn);
 
         CreateSchema(conn);
         Log("数据库 schema 已创建");
@@ -90,13 +70,7 @@ public static class DefExporter
         var defTypes = GenDefDatabase.AllDefTypesWithDatabases().ToList();
         Log($"发现 {defTypes.Count} 个 Def 类型");
 
-        // Pre-count total defs for accurate progress
-        int estimatedTotal = 0;
-        foreach (var dt in defTypes)
-        {
-            try { estimatedTotal += GenDefDatabase.GetAllDefsInDatabaseForDef(dt).Count(); }
-            catch { }
-        }
+        int estimatedTotal = CountDefs(defTypes);
         Log($"预估总数: {estimatedTotal} 个 Def");
         progress?.Invoke(0, estimatedTotal, "开始处理...");
 
@@ -130,7 +104,6 @@ public static class DefExporter
             var pFtsDesc = ftsInsertCmd.Parameters.Add("@fdesc", System.Data.DbType.String);
             var pFtsTxt = ftsInsertCmd.Parameters.Add("@ftxt", System.Data.DbType.String);
 
-            int typeIndex = 0;
             foreach (var defType in defTypes)
             {
                 IEnumerable<Def> defs;
@@ -201,13 +174,11 @@ public static class DefExporter
                         FlushFieldValues(conn, fieldValueInserts);
                     }
 
-                    if (totalDefs % 500 == 0)
+                    if (totalDefs % BatchSize == 0)
                     {
                         Log($"已处理 {totalDefs} 个 Def...");
                     }
                 }
-                typeIndex++;
-                progress?.Invoke(totalDefs, estimatedTotal, $"{typeName}: {totalDefs} / {estimatedTotal}");
             }
         }
 
@@ -218,6 +189,54 @@ public static class DefExporter
 
         conn.Close();
         Log($"导出完成: {dbPath} ({new FileInfo(dbPath).Length / 1024 / 1024} MB)");
+    }
+
+    private static void LoadFtsExtension(SQLiteConnection conn, Action<string> log)
+    {
+        conn.EnableExtensions(true);
+        var architecture = IntPtr.Size == 8 ? "x64" : "x86";
+        var assemblyDirectory = Path.GetDirectoryName(typeof(DefExporter).Assembly.Location)!;
+        var interopPath = Path.Combine(assemblyDirectory, architecture, "SQLite.Interop.dll");
+        log($"尝试加载 FTS5 扩展: {interopPath} (exists={File.Exists(interopPath)})");
+
+        // Pre-load the interop DLL so sqlite3_load_extension finds it already loaded.
+        var handle = LoadLibrary(interopPath);
+        log($"预加载结果: 0x{handle.ToInt64():X}");
+
+        conn.LoadExtension(interopPath, "sqlite3_fts5_init");
+        log("已加载 FTS5 扩展");
+    }
+
+    private static void ConfigureConnection(SQLiteConnection conn)
+    {
+        using var command = conn.CreateCommand();
+        command.CommandText = @"
+                PRAGMA journal_mode=OFF;
+                PRAGMA synchronous=OFF;
+                PRAGMA cache_size=-20000;
+                PRAGMA mmap_size=268435456;
+                PRAGMA temp_store=MEMORY;
+                PRAGMA page_size=8192;
+            ";
+        command.ExecuteNonQuery();
+    }
+
+    private static int CountDefs(IEnumerable<Type> defTypes)
+    {
+        int total = 0;
+        foreach (var defType in defTypes)
+        {
+            try
+            {
+                total += GenDefDatabase.GetAllDefsInDatabaseForDef(defType).Count();
+            }
+            catch
+            {
+                // Some third-party Def databases may fail enumeration. Export still continues.
+            }
+        }
+
+        return total;
     }
 
     private static void CreateSchema(SQLiteConnection conn)
