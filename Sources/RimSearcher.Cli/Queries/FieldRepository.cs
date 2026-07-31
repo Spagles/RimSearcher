@@ -108,6 +108,8 @@ internal sealed class FieldRepository
         return NoiseFieldNames.Contains(path[segmentStart..]);
     }
 
+    // 注意：以下名单与 DataMod 的 DefFieldExtractor.SkipFieldNames 内容一致，修改时必须同步两侧。
+    // 两侧语义不同：DataMod 按完整路径精确过滤，CLI 按路径末段匹配过滤。
     private static readonly HashSet<string> NoiseFieldNames = new()
     {
         "debugRandomId", "defNameHash", "generated",

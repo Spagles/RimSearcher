@@ -13,6 +13,8 @@ internal static class DefFieldExtractor
     private const int MaxDepth = 3;
     private const int MaxValuesPerDef = 5000;
 
+    // 注意：以下名单与 CLI 的 FieldRepository.NoiseFieldNames 内容一致，修改时必须同步两侧。
+    // 两侧语义不同：DataMod 按完整路径精确过滤，CLI 按路径末段匹配过滤。
     private static readonly HashSet<string> SkipFieldNames = new()
     {
         "debugRandomId", "defNameHash", "generated",
