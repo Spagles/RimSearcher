@@ -113,6 +113,9 @@ public static class DefExporter
                         Log($"已处理 {totalDefs} 个 Def...");
                     }
                 }
+
+                // 每个类型处理完成后刷新一次进度。
+                progress?.Invoke(totalDefs, estimatedTotal, $"{typeName}: {totalDefs} / {estimatedTotal}");
             }
         }
 

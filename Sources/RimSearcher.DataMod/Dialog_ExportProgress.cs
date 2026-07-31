@@ -15,10 +15,11 @@ public class Dialog_ExportProgress : Window
     private readonly Thread _thread;
     private readonly long _startTicks;
 
-    private int _current;
-    private int _total;
-    private string _status = "准备中...";
-    private string? _error;
+    // 以下字段由后台导出线程写入、主线程每帧读取，需 volatile 保证可见性。
+    private volatile int _current;
+    private volatile int _total;
+    private volatile string _status = "准备中...";
+    private volatile string? _error;
     private long _endTicks;
 
     public override Vector2 InitialSize => new(560f, 330f);
