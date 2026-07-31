@@ -19,6 +19,7 @@ public class Dialog_ExportProgress : Window
     private int _total;
     private string _status = "准备中...";
     private string? _error;
+    private long _endTicks;
     public override Vector2 InitialSize => new(560f, 330f);
 
     public Dialog_ExportProgress(string dbPath)
@@ -66,6 +67,8 @@ public class Dialog_ExportProgress : Window
     public override void DoWindowContents(Rect inRect)
     {
         bool done = !_thread.IsAlive;
+        if (done && _endTicks == 0)
+            _endTicks = DateTime.UtcNow.Ticks;
 
         // Consume keyboard events while exporting to prevent key presses leaking to game
         if (!done && Event.current != null && Event.current.isKey)
@@ -91,9 +94,17 @@ public class Dialog_ExportProgress : Window
 
             if (_current > 0)
             {
-                var elapsed = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - _startTicks);
-                var eta = TimeSpan.FromTicks((long)(elapsed.Ticks / pct - elapsed.Ticks));
-                Widgets.Label(new Rect(ContentMargin, y, width, 22f), $"已用: {FormatTime(elapsed)}  预计剩余: {FormatTime(eta)}");
+                var elapsed = GetElapsed();
+                if (done)
+                {
+                    // 导出已结束：只显示实际导出用时，不再显示预计剩余。
+                    Widgets.Label(new Rect(ContentMargin, y, width, 22f), $"已用: {FormatTime(elapsed)}");
+                }
+                else
+                {
+                    var eta = TimeSpan.FromTicks((long)(elapsed.Ticks / pct - elapsed.Ticks));
+                    Widgets.Label(new Rect(ContentMargin, y, width, 22f), $"已用: {FormatTime(elapsed)}  预计剩余: {FormatTime(eta)}");
+                }
                 y += 28f;
             }
             else
@@ -123,6 +134,14 @@ public class Dialog_ExportProgress : Window
         {
             Widgets.Label(new Rect(ContentMargin, y, width, 24f), "正在导出，请勿关闭此窗口...");
         }
+    }
+
+    private TimeSpan GetElapsed()
+    {
+        long elapsedTicks = _endTicks != 0
+            ? _endTicks - _startTicks
+            : DateTime.UtcNow.Ticks - _startTicks;
+        return TimeSpan.FromTicks(elapsedTicks);
     }
 
     private static string FormatTime(TimeSpan ts)
