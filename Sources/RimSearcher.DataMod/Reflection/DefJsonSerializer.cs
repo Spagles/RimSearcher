@@ -151,7 +151,13 @@ internal static class DefJsonSerializer
             if (!first)
                 builder.Append(',');
             first = false;
-            SerializeValue(entry.Key, builder, visited, depth + 1);
+            string keyString = entry.Key switch
+            {
+                Def defRef => defRef.defName,
+                Type typeRef => typeRef.FullName ?? typeRef.Name,
+                _ => entry.Key?.ToString() ?? string.Empty
+            };
+            AppendQuoted(builder, keyString);
             builder.Append(':');
             SerializeValue(entry.Value, builder, visited, depth + 1);
         }
