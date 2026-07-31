@@ -48,18 +48,15 @@ internal sealed class FieldRepository
     {
         using var connection = _connections.Open();
         using var command = connection.CreateCommand();
-        int sqlLimit = Math.Min(limit * 2, 10000);
         command.CommandText = """
             SELECT fv.field_path, fv.field_value
             FROM field_values fv
             JOIN defs d ON fv.def_id = d.id
             WHERE d.def_name = @name AND d.def_type = @type
             ORDER BY fv.field_path
-            LIMIT @limit
             """;
         command.Parameters.AddWithValue("@name", defName);
         command.Parameters.AddWithValue("@type", type);
-        command.Parameters.AddWithValue("@limit", sqlLimit);
 
         var results = new List<FieldValue>();
         using var reader = command.ExecuteReader();
