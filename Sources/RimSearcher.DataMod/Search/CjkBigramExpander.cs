@@ -4,6 +4,10 @@ namespace RimSearcher.DataMod.Search;
 
 internal static class CjkBigramExpander
 {
+    /// <summary>
+    /// 将文本中的连续 CJK 字符段展开为相邻二元组，提升 FTS5 中文检索命中率。
+    /// 例如 "护盾腰带" 展开为 "护盾 盾腰 腰带"。
+    /// </summary>
     public static string Expand(string text)
     {
         if (string.IsNullOrEmpty(text))
@@ -43,8 +47,9 @@ internal static class CjkBigramExpander
         return result.ToString();
     }
 
+    // 注：CJK Extension B（U+20000 起）在 char 上不可达，代理对按两个 char 参与分段，
+    // 与原实现行为一致，故不在此处处理。
     private static bool IsCjkChar(char character) =>
         character is >= '\u4E00' and <= '\u9FFF'
-            or >= '\u3400' and <= '\u4DBF'
-            || character >= 0x20000 && character <= 0x2A6DF;
+            or >= '\u3400' and <= '\u4DBF';
 }

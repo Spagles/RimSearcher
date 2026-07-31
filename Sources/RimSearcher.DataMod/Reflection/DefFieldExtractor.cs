@@ -3,6 +3,11 @@ using Verse;
 
 namespace RimSearcher.DataMod.Reflection;
 
+/// <summary>
+/// 遍历 Def 对象树并提取可检索的字段值，供 field_values 表与 FTS 检索文本使用。
+/// 路径格式：顶层字段名、嵌套用 "." 连接、列表项用 "[i]"、字典项用 ".key"；
+/// 深度上限 3、单 Def 上限 5000 条，噪声字段与 modContentPack 前缀被过滤。
+/// </summary>
 internal static class DefFieldExtractor
 {
     private const int MaxDepth = 3;
@@ -20,6 +25,9 @@ internal static class DefFieldExtractor
         "modContentPack."
     };
 
+    /// <summary>
+    /// 提取指定 Def 的全部字段值：写入 inserts 供入库，同时收集到 allTexts 供 FTS 文本构建。
+    /// </summary>
     public static void Extract(
         Def def,
         int defId,

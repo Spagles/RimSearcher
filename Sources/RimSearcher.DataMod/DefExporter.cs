@@ -37,7 +37,7 @@ public static class DefExporter
 
         int totalDefs = 0;
         int defId = 0;
-        var fieldValueInserts = new List<(int defId, string fieldPath, string fieldValue)>();
+        var fieldValueInserts = new List<(int DefId, string FieldPath, string FieldValue)>();
 
         using var tx = conn.BeginTransaction();
 

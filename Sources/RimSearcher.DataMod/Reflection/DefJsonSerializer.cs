@@ -5,10 +5,18 @@ using Verse;
 
 namespace RimSearcher.DataMod.Reflection;
 
+/// <summary>
+/// 将 Def 对象序列化为 JSON 文本，供数据库 full_data 列存储。
+/// 输出契约：按反射字段名原样输出（含嵌套对象、集合与字典），
+/// 最大深度 10，循环引用输出 "$cyclic_ref"，嵌套 Def 引用仅输出 defName。
+/// </summary>
 internal static class DefJsonSerializer
 {
     private const int MaxDepth = 10;
 
+    /// <summary>
+    /// 序列化指定 Def 的完整 JSON 文本。
+    /// </summary>
     public static string Serialize(Def def)
     {
         var builder = new StringBuilder();
