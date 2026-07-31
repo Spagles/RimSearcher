@@ -84,6 +84,7 @@ internal static class ReleaseUpdater
 
     private static void TryDelete(string path)
     {
+        // 清理失败不得掩盖原始下载错误，静默忽略即可。
         try { File.Delete(path); } catch { }
     }
 }

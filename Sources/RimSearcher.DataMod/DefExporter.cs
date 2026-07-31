@@ -10,7 +10,7 @@ public static class DefExporter
     private const int BatchSize = 500;
 
     /// <summary>
-    /// Exports every currently loaded RimWorld definition to a searchable SQLite database.
+    /// 将当前加载的全部 RimWorld Def 导出为可检索的 SQLite 数据库。
     /// </summary>
     public static void Export(string dbPath, Action<string>? log = null, Action<int, int, string>? progress = null)
     {
@@ -96,7 +96,7 @@ public static class DefExporter
                         sourceFile,
                         json);
 
-                    // Build FTS text and insert into FTS5 index
+                    // 构建 FTS 检索文本并写入全文索引
                     var fieldTexts = new List<string>();
                     DefFieldExtractor.Extract(def, defId, fieldValueInserts, fieldTexts);
                     var ftsText = SearchTextBuilder.Build(def.defName, label, description, fieldTexts);
@@ -137,7 +137,7 @@ public static class DefExporter
             }
             catch
             {
-                // Some third-party Def databases may fail enumeration. Export still continues.
+                // 第三方 Def 数据库可能枚举失败，跳过该类型并继续导出。
             }
         }
 

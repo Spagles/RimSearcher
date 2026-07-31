@@ -4,7 +4,7 @@ using Verse;
 namespace RimSearcher.DataMod;
 
 /// <summary>
-/// Displays export progress while the database is generated on a background thread.
+/// 在后台线程生成数据库期间显示导出进度。
 /// </summary>
 public class Dialog_ExportProgress : Window
 {
@@ -20,6 +20,7 @@ public class Dialog_ExportProgress : Window
     private string _status = "准备中...";
     private string? _error;
     private long _endTicks;
+
     public override Vector2 InitialSize => new(560f, 330f);
 
     public Dialog_ExportProgress(string dbPath)
@@ -70,7 +71,7 @@ public class Dialog_ExportProgress : Window
         if (done && _endTicks == 0)
             _endTicks = DateTime.UtcNow.Ticks;
 
-        // Consume keyboard events while exporting to prevent key presses leaking to game
+        // 导出期间吞掉键盘事件，防止按键泄漏到游戏。
         if (!done && Event.current != null && Event.current.isKey)
         {
             Event.current.Use();

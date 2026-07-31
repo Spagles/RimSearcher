@@ -5,7 +5,7 @@ using Verse;
 namespace RimSearcher.DataMod;
 
 /// <summary>
-/// Provides the RimSearcher settings page and starts Def database exports.
+/// 提供 RimSearcher 设置页并启动 Def 数据库导出。
 /// </summary>
 public class RimSearcherMod : Mod
 {

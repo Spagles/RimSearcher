@@ -3,6 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace RimSearcher.DataMod.Export;
 
+/// <summary>
+/// 管理导出数据库的连接：打开连接、加载 FTS5 原生扩展并应用 PRAGMA 配置。
+/// 初始化失败时释放连接并向上抛出，由调用方统一处理。
+/// </summary>
 internal static class ExportDatabase
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
