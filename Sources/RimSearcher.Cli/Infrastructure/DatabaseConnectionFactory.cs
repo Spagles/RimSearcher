@@ -16,7 +16,7 @@ internal sealed class DatabaseConnectionFactory
         if (!File.Exists(_databasePath))
         {
             Console.Error.WriteLine($"Error: {_databasePath} not found");
-            Environment.Exit(1);
+            Environment.Exit(ExitCodes.Error);
         }
 
         var connection = new SqliteConnection($"Data Source={_databasePath};Mode=ReadOnly");

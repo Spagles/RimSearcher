@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using RimSearcher.Cli.Infrastructure;
 
 namespace RimSearcher.Cli.Maintenance;
 
@@ -27,7 +28,7 @@ internal static class ReleaseUpdater
         catch (Exception exception)
         {
             Console.Error.WriteLine($"无法检查更新: {exception.Message}");
-            Environment.Exit(1);
+            Environment.Exit(ExitCodes.Error);
         }
 
         var latestVersion = tag.StartsWith('v') ? tag[1..] : tag;
@@ -56,7 +57,7 @@ internal static class ReleaseUpdater
         {
             Console.Error.WriteLine($"下载失败: {exception.Message}");
             TryDelete(newExecutablePath);
-            Environment.Exit(1);
+            Environment.Exit(ExitCodes.Error);
         }
 
         var batchPath = Path.Combine(executableDirectory, "rimsearcher.update.bat");
@@ -74,11 +75,11 @@ internal static class ReleaseUpdater
         {
             Console.Error.WriteLine($"更新脚本启动失败: {exception.Message}");
             Console.WriteLine($"新版本已下载到: {newExecutablePath}");
-            Environment.Exit(1);
+            Environment.Exit(ExitCodes.Error);
         }
 
         Console.WriteLine($"已下载 {latestVersion}，正在安装...");
-        Environment.Exit(0);
+        Environment.Exit(ExitCodes.Success);
     }
 
     private static void TryDelete(string path)

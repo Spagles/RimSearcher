@@ -18,14 +18,14 @@ internal static class DefCommands
                 if (types.Count == 0)
                 {
                     Console.Error.WriteLine($"Error: no Def found with defName '{defName}'");
-                    Environment.Exit(2);
+                    Environment.Exit(ExitCodes.NotFound);
                 }
                 if (types.Count > 1)
                 {
                     Console.Error.WriteLine($"Error: '{defName}' matches multiple Def types. Specify --type:");
                     foreach (var candidateType in types)
                         Console.Error.WriteLine($"  {candidateType}");
-                    Environment.Exit(2);
+                    Environment.Exit(ExitCodes.NotFound);
                 }
                 type = types[0];
             }
@@ -36,7 +36,7 @@ internal static class DefCommands
                 if (source == null)
                 {
                     Console.Error.WriteLine($"Error: no Def found with defName '{defName}' and type '{type}'");
-                    Environment.Exit(2);
+                    Environment.Exit(ExitCodes.NotFound);
                 }
 
                 using var document = JsonDocument.Parse(source.FullData);
@@ -70,7 +70,7 @@ internal static class DefCommands
             if (fullData == null)
             {
                 Console.Error.WriteLine($"Error: no Def found with defName '{defName}' and type '{type}'");
-                Environment.Exit(2);
+                Environment.Exit(ExitCodes.NotFound);
             }
             Console.WriteLine(fullData);
         });
