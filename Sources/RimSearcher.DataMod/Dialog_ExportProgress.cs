@@ -3,8 +3,14 @@ using Verse;
 
 namespace RimSearcher.DataMod;
 
+/// <summary>
+/// Displays export progress while the database is generated on a background thread.
+/// </summary>
 public class Dialog_ExportProgress : Window
 {
+    private const float ContentMargin = 20f;
+    private const float CloseButtonWidth = 160f;
+
     private readonly string _dbPath;
     private readonly Thread _thread;
     private readonly long _startTicks;
@@ -67,28 +73,27 @@ public class Dialog_ExportProgress : Window
             Event.current.Use();
         }
 
-        float margin = 20f;
-        float w = inRect.width - margin * 2f;
-        float y = inRect.y + margin;
+        float width = inRect.width - ContentMargin * 2f;
+        float y = inRect.y + ContentMargin;
 
         Text.Font = GameFont.Medium;
-        Widgets.Label(new Rect(margin, y, w, 36f), "导出 Def 数据库");
+        Widgets.Label(new Rect(ContentMargin, y, width, 36f), "导出 Def 数据库");
         Text.Font = GameFont.Small;
         y += 48f;
 
         if (_total > 0)
         {
             float pct = Mathf.Clamp01((float)_current / _total);
-            Widgets.Label(new Rect(margin, y, w, 24f), $"{_current:N0} / {_total:N0} ({pct:P0})");
+            Widgets.Label(new Rect(ContentMargin, y, width, 24f), $"{_current:N0} / {_total:N0} ({pct:P0})");
             y += 30f;
-            Widgets.FillableBar(new Rect(margin, y, w, 36f), pct);
+            Widgets.FillableBar(new Rect(ContentMargin, y, width, 36f), pct);
             y += 44f;
 
             if (_current > 0)
             {
                 var elapsed = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - _startTicks);
                 var eta = TimeSpan.FromTicks((long)(elapsed.Ticks / pct - elapsed.Ticks));
-                Widgets.Label(new Rect(margin, y, w, 22f), $"已用: {FormatTime(elapsed)}  预计剩余: {FormatTime(eta)}");
+                Widgets.Label(new Rect(ContentMargin, y, width, 22f), $"已用: {FormatTime(elapsed)}  预计剩余: {FormatTime(eta)}");
                 y += 28f;
             }
             else
@@ -97,28 +102,26 @@ public class Dialog_ExportProgress : Window
             }
         }
 
-        Widgets.Label(new Rect(margin, y, w, 28f), _status);
+        Widgets.Label(new Rect(ContentMargin, y, width, 28f), _status);
         y += 40f;
 
         if (done)
         {
             if (_error != null)
             {
-                Widgets.Label(new Rect(margin, y, w, 24f), $"错误: {_error}");
+                Widgets.Label(new Rect(ContentMargin, y, width, 24f), $"错误: {_error}");
                 y += 32f;
             }
 
-            // Centered close button
-            float btnW = 160f;
-            float btnX = (inRect.width - btnW) / 2f;
-            if (Widgets.ButtonText(new Rect(btnX, y, btnW, 42f), "关闭"))
+            float buttonX = (inRect.width - CloseButtonWidth) / 2f;
+            if (Widgets.ButtonText(new Rect(buttonX, y, CloseButtonWidth, 42f), "关闭"))
             {
                 Close();
             }
         }
         else
         {
-            Widgets.Label(new Rect(margin, y, w, 24f), "正在导出，请勿关闭此窗口...");
+            Widgets.Label(new Rect(ContentMargin, y, width, 24f), "正在导出，请勿关闭此窗口...");
         }
     }
 
