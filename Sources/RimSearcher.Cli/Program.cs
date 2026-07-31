@@ -1,13 +1,19 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.Encodings.Web;
 using ConsoleAppFramework;
 using Microsoft.Data.Sqlite;
-using System.Diagnostics;
-Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-string DbPath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "defs.db");
-var jsonOpts = new JsonSerializerOptions
+Console.OutputEncoding = Encoding.UTF8;
+
+const string ApplicationName = "RimSearcher";
+const string LatestReleaseUrl = "https://github.com/kearril/RimSearcher/releases/latest";
+const string ReleaseDownloadUrl = "https://github.com/kearril/RimSearcher/releases/download";
+
+string dbPath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "defs.db");
+var jsonOptions = new JsonSerializerOptions
 {
     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -17,21 +23,28 @@ var jsonOpts = new JsonSerializerOptions
 
 SqliteConnection OpenDb()
 {
-    if (!File.Exists(DbPath))
+    if (!File.Exists(dbPath))
     {
-        Console.Error.WriteLine($"Error: {DbPath} not found");
+        Console.Error.WriteLine($"Error: {dbPath} not found");
         Environment.Exit(1);
     }
-    var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
-    conn.Open();
-    return conn;
+
+    var connection = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+    connection.Open();
+    return connection;
 }
 
-string ToJson(object value) => JsonSerializer.Serialize(value, jsonOpts);
+void WriteJson(object value) => Console.WriteLine(JsonSerializer.Serialize(value, jsonOptions));
+
+static string ReadLabel(SqliteDataReader reader, int nameOrdinal, int labelOrdinal) =>
+    reader.IsDBNull(labelOrdinal) ? reader.GetString(nameOrdinal) : reader.GetString(labelOrdinal);
+
+static string? ReadOptionalString(SqliteDataReader reader, int ordinal) =>
+    reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 
 // --- shared helpers ---
 
-var NoiseFields = new HashSet<string>
+var noiseFields = new HashSet<string>
 {
     "debugRandomId", "defNameHash", "generated",
     "ignoreConfigErrors", "ignoreIllegalLabelCharacterConfigError",
@@ -46,7 +59,7 @@ bool IsNoiseField(string path)
     int lastDot = path.LastIndexOf('.');
     int lastBracket = path.LastIndexOf('[');
     int segStart = Math.Max(lastDot, lastBracket) + 1;
-    return NoiseFields.Contains(path[segStart..]);
+    return noiseFields.Contains(path[segStart..]);
 }
 
 void AddFilterParams(SqliteCommand cmd, string? type, string? mod)
@@ -75,7 +88,7 @@ app.Add("search", ([Argument] string keyword, string? type = null, string? mod =
             """;
         cmd.Parameters.AddWithValue("@kw", keyword);
         AddFilterParams(cmd, type, mod);
-        Console.WriteLine(ToJson(new { count = cmd.ExecuteScalar() }));
+        WriteJson(new { count = cmd.ExecuteScalar() });
         return;
     }
 
@@ -101,13 +114,13 @@ app.Add("search", ([Argument] string keyword, string? type = null, string? mod =
         {
             def_name = reader.GetString(0),
             def_type = reader.GetString(1),
-            label = reader.IsDBNull(2) ? reader.GetString(0) : reader.GetString(2),
+            label = ReadLabel(reader, 0, 2),
             mod_name = reader.GetString(3),
-            package_id = reader.IsDBNull(4) ? null : reader.GetString(4),
+            package_id = ReadOptionalString(reader, 4),
             rank = reader.GetDouble(5)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
 });
 
 app.Add("list", (string? type = null, string? mod = null, int limit = 20, int offset = 0) =>
@@ -134,12 +147,12 @@ app.Add("list", (string? type = null, string? mod = null, int limit = 20, int of
         {
             def_name = reader.GetString(0),
             def_type = reader.GetString(1),
-            label = reader.IsDBNull(2) ? reader.GetString(0) : reader.GetString(2),
+            label = ReadLabel(reader, 0, 2),
             mod_name = reader.GetString(3),
-            package_id = reader.IsDBNull(4) ? null : reader.GetString(4)
+            package_id = ReadOptionalString(reader, 4)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
 });
 
 app.Add("get", ([Argument] string defName, string? type = null, bool brief = false) =>
@@ -205,16 +218,16 @@ app.Add("get", ([Argument] string defName, string? type = null, bool brief = fal
             }
         }
 
-        Console.WriteLine(ToJson(new
+        WriteJson(new
         {
             def_name = reader.GetString(0),
             def_type = reader.GetString(1),
-            label = reader.IsDBNull(2) ? reader.GetString(0) : reader.GetString(2),
+            label = ReadLabel(reader, 0, 2),
             mod_name = reader.GetString(3),
-            package_id = reader.IsDBNull(4) ? null : reader.GetString(4),
+            package_id = ReadOptionalString(reader, 4),
             thing_class = thingClass,
             comp_classes = compClasses
-        }));
+        });
         return;
     }
 
@@ -260,14 +273,14 @@ app.Add("find", ([Argument] string fieldPath, [Argument] string value, string? t
         {
             def_name = reader.GetString(0),
             def_type = reader.GetString(1),
-            label = reader.IsDBNull(2) ? reader.GetString(0) : reader.GetString(2),
+            label = ReadLabel(reader, 0, 2),
             mod_name = reader.GetString(3),
-            package_id = reader.IsDBNull(4) ? null : reader.GetString(4),
+            package_id = ReadOptionalString(reader, 4),
             field_path = reader.GetString(5),
             field_value = reader.GetString(6)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
     if (results.Count == 0)
         Console.Error.WriteLine($"Hint: no exact matches. Try fuzzy search: rimsearcher search \"{value}\"");
 });
@@ -302,7 +315,7 @@ app.Add("fields", ([Argument] string defName, string type, int limit = 1000) =>
             field_value = reader.GetString(1)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
 });
 
 app.Add("values", ([Argument] string fieldPath, int limit = 200) =>
@@ -323,7 +336,7 @@ app.Add("values", ([Argument] string fieldPath, int limit = 200) =>
     using var reader = cmd.ExecuteReader();
     while (reader.Read())
         values.Add(reader.GetString(0));
-    Console.WriteLine(ToJson(values));
+    WriteJson(values);
 });
 
 app.Add("types", () =>
@@ -342,7 +355,7 @@ app.Add("types", () =>
             count = reader.GetInt32(1)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
 });
 
 app.Add("mods", () =>
@@ -362,7 +375,7 @@ app.Add("mods", () =>
             def_count = reader.GetInt32(2)
         });
     }
-    Console.WriteLine(ToJson(results));
+    WriteJson(results);
 });
 
 app.Add("install", () =>
@@ -386,12 +399,12 @@ app.Add("install", () =>
 app.Add("update", () =>
 {
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-    http.DefaultRequestHeaders.UserAgent.ParseAdd("RimSearcher");
+    http.DefaultRequestHeaders.UserAgent.ParseAdd(ApplicationName);
 
     string tag = null!;
     try
     {
-        var response = http.GetAsync("https://github.com/kearril/RimSearcher/releases/latest").Result;
+        var response = http.GetAsync(LatestReleaseUrl).Result;
         if (response.StatusCode != System.Net.HttpStatusCode.Redirect)
             throw new Exception($"Unexpected status: {(int)response.StatusCode}");
         var location = response.Headers.Location?.ToString()
@@ -414,16 +427,15 @@ app.Add("update", () =>
         return;
     }
 
-    Console.WriteLine($"当前: {currentVer}  最新: {latestVer}");
+    var downloadUrl = $"{ReleaseDownloadUrl}/{tag}/rimsearcher.exe";
 
-    var downloadUrl = $"https://github.com/kearril/RimSearcher/releases/download/{tag}/rimsearcher.exe";
     var exeDir = Path.GetDirectoryName(Environment.ProcessPath)!;
     var newPath = Path.Combine(exeDir, "rimsearcher.new.exe");
 
     try
     {
         using var dl = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true });
-        dl.DefaultRequestHeaders.UserAgent.ParseAdd("RimSearcher");
+        dl.DefaultRequestHeaders.UserAgent.ParseAdd(ApplicationName);
         using var stream = dl.GetStreamAsync(downloadUrl).Result;
         using var file = File.Create(newPath);
         stream.CopyTo(file);
