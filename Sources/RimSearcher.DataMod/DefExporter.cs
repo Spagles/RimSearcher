@@ -1,5 +1,4 @@
-using System.Data.SQLite;
-using System.Runtime.InteropServices;
+using RimSearcher.DataMod.Export;
 using RimSearcher.DataMod.Reflection;
 using RimSearcher.DataMod.Search;
 using Verse;
@@ -8,7 +7,6 @@ namespace RimSearcher.DataMod;
 
 public static class DefExporter
 {
-
     private const int MaxFieldDepth = 3;
     private const int BatchSize = 500;
     private const int MaxFieldValuesPerDef = 5000;
@@ -20,14 +18,10 @@ public static class DefExporter
         "index", "shortHash"
     };
 
-
     private static readonly HashSet<string> SkipFieldPrefixes = new()
     {
         "modContentPack."
     };
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr LoadLibrary(string lpFileName);
 
     /// <summary>
     /// Exports every currently loaded RimWorld definition to a searchable SQLite database.
@@ -44,13 +38,8 @@ public static class DefExporter
             Log("已删除旧数据库文件");
         }
 
-        var connStr = $"Data Source={dbPath};Version=3;";
-        using var conn = new SQLiteConnection(connStr);
-        conn.Open();
-        LoadFtsExtension(conn, Log);
-        ConfigureConnection(conn);
-
-        CreateSchema(conn);
+        using var conn = ExportDatabase.Open(dbPath, Log);
+        ExportSchema.Create(conn);
         Log("数据库 schema 已创建");
 
         var defTypes = GenDefDatabase.AllDefTypesWithDatabases().ToList();
@@ -66,30 +55,9 @@ public static class DefExporter
 
         using var tx = conn.BeginTransaction();
 
-        using (var insertCmd = conn.CreateCommand())
+        using (var defWriter = new DefRecordWriter(conn))
+        using (var searchWriter = new SearchIndexWriter(conn))
         {
-            insertCmd.CommandText = @"
-                INSERT INTO defs (id, def_name, def_type, label, description, mod_name, package_id, source_file, full_data)
-                VALUES (@id, @dn, @dt, @lbl, @desc, @mod, @pkg, @src, @data)";
-            var pId = insertCmd.Parameters.Add("@id", System.Data.DbType.Int32);
-            var pDn = insertCmd.Parameters.Add("@dn", System.Data.DbType.String);
-            var pDt = insertCmd.Parameters.Add("@dt", System.Data.DbType.String);
-            var pLbl = insertCmd.Parameters.Add("@lbl", System.Data.DbType.String);
-            var pDesc = insertCmd.Parameters.Add("@desc", System.Data.DbType.String);
-            var pMod = insertCmd.Parameters.Add("@mod", System.Data.DbType.String);
-            var pPkg = insertCmd.Parameters.Add("@pkg", System.Data.DbType.String);
-            var pSrc = insertCmd.Parameters.Add("@src", System.Data.DbType.String);
-            var pData = insertCmd.Parameters.Add("@data", System.Data.DbType.String);
-
-            // FTS5 insert command
-            using var ftsInsertCmd = conn.CreateCommand();
-            ftsInsertCmd.CommandText = "INSERT INTO defs_fts(rowid, def_name, label, description, full_text) VALUES (@rid, @fdn, @flbl, @fdesc, @ftxt)";
-            var pFtsRowid = ftsInsertCmd.Parameters.Add("@rid", System.Data.DbType.Int32);
-            var pFtsDn = ftsInsertCmd.Parameters.Add("@fdn", System.Data.DbType.String);
-            var pFtsLbl = ftsInsertCmd.Parameters.Add("@flbl", System.Data.DbType.String);
-            var pFtsDesc = ftsInsertCmd.Parameters.Add("@fdesc", System.Data.DbType.String);
-            var pFtsTxt = ftsInsertCmd.Parameters.Add("@ftxt", System.Data.DbType.String);
-
             foreach (var defType in defTypes)
             {
                 IEnumerable<Def> defs;
@@ -131,33 +99,27 @@ public static class DefExporter
                     string? sourceFile = null;
                     try { sourceFile = def.fileName; } catch { }
 
-                    pId.Value = defId;
-                    pDn.Value = def.defName ?? "";
-                    pDt.Value = typeName;
-                    pLbl.Value = (object?)label ?? DBNull.Value;
-                    pDesc.Value = (object?)description ?? DBNull.Value;
-                    pMod.Value = modName;
-                    pPkg.Value = (object?)packageId ?? DBNull.Value;
-                    pSrc.Value = (object?)sourceFile ?? DBNull.Value;
-                    pData.Value = json;
-
-                    insertCmd.ExecuteNonQuery();
+                    defWriter.Write(
+                        defId,
+                        def.defName ?? "",
+                        typeName,
+                        label,
+                        description,
+                        modName,
+                        packageId,
+                        sourceFile,
+                        json);
 
                     // Build FTS text and insert into FTS5 index
                     var fieldTexts = new List<string>();
                     ExtractFieldValues(def, defId, fieldValueInserts, fieldTexts);
                     var ftsText = SearchTextBuilder.Build(def.defName, label, description, fieldTexts);
 
-                    pFtsRowid.Value = defId;
-                    pFtsDn.Value = def.defName ?? "";
-                    pFtsLbl.Value = (object?)label ?? DBNull.Value;
-                    pFtsDesc.Value = (object?)description ?? DBNull.Value;
-                    pFtsTxt.Value = ftsText;
-                    ftsInsertCmd.ExecuteNonQuery();
+                    searchWriter.Write(defId, def.defName ?? "", label, description, ftsText);
 
                     if (fieldValueInserts.Count >= BatchSize)
                     {
-                        FlushFieldValues(conn, fieldValueInserts);
+                        FieldValueWriter.Flush(conn, fieldValueInserts);
                     }
 
                     if (totalDefs % BatchSize == 0)
@@ -168,7 +130,7 @@ public static class DefExporter
             }
         }
 
-        FlushFieldValues(conn, fieldValueInserts);
+        FieldValueWriter.Flush(conn, fieldValueInserts);
 
         tx.Commit();
         Log($"已写入 {totalDefs} 个 Def");
@@ -177,35 +139,6 @@ public static class DefExporter
         Log($"导出完成: {dbPath} ({new FileInfo(dbPath).Length / 1024 / 1024} MB)");
     }
 
-    private static void LoadFtsExtension(SQLiteConnection conn, Action<string> log)
-    {
-        conn.EnableExtensions(true);
-        var architecture = IntPtr.Size == 8 ? "x64" : "x86";
-        var assemblyDirectory = Path.GetDirectoryName(typeof(DefExporter).Assembly.Location)!;
-        var interopPath = Path.Combine(assemblyDirectory, architecture, "SQLite.Interop.dll");
-        log($"尝试加载 FTS5 扩展: {interopPath} (exists={File.Exists(interopPath)})");
-
-        // Pre-load the interop DLL so sqlite3_load_extension finds it already loaded.
-        var handle = LoadLibrary(interopPath);
-        log($"预加载结果: 0x{handle.ToInt64():X}");
-
-        conn.LoadExtension(interopPath, "sqlite3_fts5_init");
-        log("已加载 FTS5 扩展");
-    }
-
-    private static void ConfigureConnection(SQLiteConnection conn)
-    {
-        using var command = conn.CreateCommand();
-        command.CommandText = @"
-                PRAGMA journal_mode=OFF;
-                PRAGMA synchronous=OFF;
-                PRAGMA cache_size=-20000;
-                PRAGMA mmap_size=268435456;
-                PRAGMA temp_store=MEMORY;
-                PRAGMA page_size=8192;
-            ";
-        command.ExecuteNonQuery();
-    }
 
     private static int CountDefs(IEnumerable<Type> defTypes)
     {
@@ -225,69 +158,6 @@ public static class DefExporter
         return total;
     }
 
-    private static void CreateSchema(SQLiteConnection conn)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA encoding='UTF-8'";
-        cmd.ExecuteNonQuery();
-
-        cmd.CommandText = @"
-            CREATE TABLE defs (
-                id          INTEGER PRIMARY KEY,
-                def_name    TEXT NOT NULL,
-                def_type    TEXT NOT NULL,
-                label       TEXT,
-                description TEXT,
-                mod_name    TEXT NOT NULL,
-                package_id  TEXT,
-                source_file TEXT,
-                full_data   TEXT NOT NULL
-            );
-
-            CREATE UNIQUE INDEX idx_defs_name_type ON defs(def_name, def_type);
-            CREATE INDEX idx_defs_type ON defs(def_type);
-            CREATE INDEX idx_defs_mod ON defs(mod_name);
-
-            CREATE TABLE field_values (
-                def_id      INTEGER NOT NULL REFERENCES defs(id),
-                field_path  TEXT NOT NULL,
-                field_value TEXT NOT NULL
-            );
-
-            CREATE INDEX idx_fv_def_id ON field_values(def_id);
-            CREATE INDEX idx_fv_path ON field_values(field_path);
-            CREATE INDEX idx_fv_value ON field_values(field_value);
-
-            CREATE VIRTUAL TABLE defs_fts USING fts5(
-                def_name,
-                label,
-                description,
-                full_text,
-                tokenize='unicode61'
-            );
-        ";
-        cmd.ExecuteNonQuery();
-    }
-
-    private static void FlushFieldValues(SQLiteConnection conn, List<(int, string, string)> inserts)
-    {
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO field_values (def_id, field_path, field_value) VALUES (@did, @fp, @fv)";
-        var pDid = cmd.Parameters.Add("@did", System.Data.DbType.Int32);
-        var pFp = cmd.Parameters.Add("@fp", System.Data.DbType.String);
-        var pFv = cmd.Parameters.Add("@fv", System.Data.DbType.String);
-
-        foreach (var (defId, fieldPath, fieldValue) in inserts)
-        {
-            pDid.Value = defId;
-            pFp.Value = fieldPath;
-            pFv.Value = fieldValue;
-            cmd.ExecuteNonQuery();
-        }
-
-        inserts.Clear();
-    }
 
 
 
