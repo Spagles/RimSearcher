@@ -115,7 +115,19 @@ internal static class DefFieldExtractor
                 if (!TryAddValue(defId, itemPath, itemType.FullName ?? itemType.Name, inserts, allTexts, ref count))
                     return;
             }
-            else if (item != null && item.GetType().IsClass && !(item is ValueType))
+            else if (item is Def defReference)
+            {
+                if (!TryAddValue(defId, itemPath, defReference.defName, inserts, allTexts, ref count))
+                    return;
+            }
+            else if (item is ValueType)
+            {
+                string? scalarText = item.ToString();
+                if (scalarText != null
+                    && !TryAddValue(defId, itemPath, scalarText, inserts, allTexts, ref count))
+                    return;
+            }
+            else if (item != null && item.GetType().IsClass)
             {
                 ExtractRecursive(item, defId, itemPath, inserts, allTexts, visited, depth + 1, ref count);
             }
@@ -152,7 +164,19 @@ internal static class DefFieldExtractor
                 if (!TryAddValue(defId, entryPath, valueType.FullName ?? valueType.Name, inserts, allTexts, ref count))
                     return;
             }
-            else if (entry.Value != null && entry.Value.GetType().IsClass && !(entry.Value is ValueType))
+            else if (entry.Value is Def defReference)
+            {
+                if (!TryAddValue(defId, entryPath, defReference.defName, inserts, allTexts, ref count))
+                    return;
+            }
+            else if (entry.Value is ValueType)
+            {
+                string? scalarText = entry.Value.ToString();
+                if (scalarText != null
+                    && !TryAddValue(defId, entryPath, scalarText, inserts, allTexts, ref count))
+                    return;
+            }
+            else if (entry.Value != null && entry.Value.GetType().IsClass)
             {
                 ExtractRecursive(entry.Value, defId, entryPath, inserts, allTexts, visited, depth + 1, ref count);
             }
