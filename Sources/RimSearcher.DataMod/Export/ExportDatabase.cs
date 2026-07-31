@@ -37,8 +37,15 @@ internal static class ExportDatabase
         var interopPath = Path.Combine(assemblyDirectory, architecture, "SQLite.Interop.dll");
         log($"尝试加载 FTS5 扩展: {interopPath} (exists={File.Exists(interopPath)})");
 
-        var handle = LoadLibrary(interopPath);
-        log($"预加载结果: 0x{handle.ToInt64():X}");
+        try
+        {
+            var handle = LoadLibrary(interopPath);
+            log($"预加载结果: 0x{handle.ToInt64():X}");
+        }
+        catch
+        {
+            // Non-Windows systems do not have kernel32.dll; ignore P/Invoke failure and proceed to LoadExtension.
+        }
 
         connection.LoadExtension(interopPath, "sqlite3_fts5_init");
         log("已加载 FTS5 扩展");
