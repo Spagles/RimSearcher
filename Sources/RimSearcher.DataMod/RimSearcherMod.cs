@@ -4,8 +4,13 @@ using Verse;
 
 namespace RimSearcher.DataMod;
 
+/// <summary>
+/// Provides the RimSearcher settings page and starts Def database exports.
+/// </summary>
 public class RimSearcherMod : Mod
 {
+    private const float ButtonWidth = 200f;
+    private const float ButtonHeight = 36f;
     private string _exportPath = "";
 
     public RimSearcherMod(ModContentPack content) : base(content)
@@ -16,8 +21,6 @@ public class RimSearcherMod : Mod
     public override void DoSettingsWindowContents(Rect inRect)
     {
         float y = inRect.y;
-        float btnW = 200f;
-        float btnH = 36f;
 
         Widgets.Label(new Rect(0f, y, inRect.width, 24f), "导出路径:");
         y += 26f;
@@ -25,19 +28,19 @@ public class RimSearcherMod : Mod
         _exportPath = Widgets.TextField(new Rect(0f, y, inRect.width, 28f), _exportPath);
         y += 42f;
 
-        if (Widgets.ButtonText(new Rect(0f, y, btnW, btnH), "在资源管理器中打开"))
+        if (Widgets.ButtonText(new Rect(0f, y, ButtonWidth, ButtonHeight), "在资源管理器中打开"))
             OpenInExplorer();
-        y += btnH + 6f;
+        y += ButtonHeight + 6f;
 
-        if (Widgets.ButtonText(new Rect(0f, y, btnW, btnH), "导出 Def 数据库"))
+        if (Widgets.ButtonText(new Rect(0f, y, ButtonWidth, ButtonHeight), "导出 Def 数据库"))
         {
-            var path = _exportPath;
-            if (Directory.Exists(path))
-                path = Path.Combine(path, "defs.db");
+            var path = ResolveExportPath(_exportPath);
             Find.WindowStack.Add(new Dialog_ExportProgress(path));
         }
-        y += btnH + 16f;
     }
+
+    private static string ResolveExportPath(string exportPath) =>
+        Directory.Exists(exportPath) ? Path.Combine(exportPath, "defs.db") : exportPath;
 
     private void OpenInExplorer()
     {
